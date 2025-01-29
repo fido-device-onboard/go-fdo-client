@@ -98,9 +98,9 @@ Remove the credential file if it exists:
 rm cred.bin
 ```
 ### Run the FDO Client with DI URL
-Run the FDO client, specifying the DI URL:
+Run the FDO client, specifying the DI URL (on linux systems, root is required to properly gather a device identifier):
 ```
-./fdo_client -di http://127.0.0.1:8080 -debug
+./fdo_client -di-device-info=gotest -di http://127.0.0.1:8080 -debug
 ```
 ### Print FDO Client Configuration or Status
 Print the FDO client configuration or status:
@@ -138,7 +138,7 @@ Ensure `tpm2_tools` is installed on your system.
 Run the FDO client, specifying the DI URL with the TPM resource manager path specified.
 The suppoerted key type and key exchange must always be explicit through the -di-key and -kex flag.:
 ```
-./fdo_client -di http://127.0.0.1:8080 -di-key ec256 -kex ECDH256 -tpm /dev/tpmrm0 -debug
+./fdo_client -di http://127.0.0.1:8080 -di-device-info=gotest -di-key ec256 -kex ECDH256 -tpm /dev/tpmrm0 -debug
 ```
 >NOTE: fdo_client may require elevated privileges. Please use 'sudo' to execute.
 ### Print FDO Client Configuration or Status

@@ -47,24 +47,26 @@ import (
 var clientFlags = flag.NewFlagSet("client", flag.ContinueOnError)
 
 var (
-	debug        bool
-	blobPath     string
-	diURL        string
-	diKey        string
-	diKeyEnc     string
-	kexSuite     string
-	cipherSuite  string
-	tpmPath      string
-	printDevice  bool
-	rvOnly       bool
-	dlDir        string
-	echoCmds     bool
-	uploads      = make(fsVar)
-	wgetDir      string
-	deviceStatus FdoDeviceState
-	insecureTLS  bool
-	tpmc         tpm.Closer
-	resale       bool
+	debug           bool
+	blobPath        string
+	diURL           string
+	diDeviceInfo    string
+	diDeviceInfoMac string
+	diKey           string
+	diKeyEnc        string
+	kexSuite        string
+	cipherSuite     string
+	tpmPath         string
+	printDevice     bool
+	rvOnly          bool
+	dlDir           string
+	echoCmds        bool
+	uploads         = make(fsVar)
+	wgetDir         string
+	deviceStatus    FdoDeviceState
+	insecureTLS     bool
+	tpmc            tpm.Closer
+	resale          bool
 )
 
 type fsVar map[string]string
@@ -155,6 +157,8 @@ func init() {
 	clientFlags.BoolVar(&printDevice, "print", false, "Print device credential blob and stop")
 	clientFlags.BoolVar(&rvOnly, "rv-only", false, "Perform TO1 then stop")
 	clientFlags.BoolVar(&resale, "resale", false, "Perform resale")
+	clientFlags.StringVar(&diDeviceInfo, "di-device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
+	clientFlags.StringVar(&diDeviceInfoMac, "di-device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
 	clientFlags.StringVar(&tpmPath, "tpm", "", "Use a TPM at `path` for device credential secrets")
 	clientFlags.Var(&uploads, "upload", "List of dirs and `files` to upload files from, "+
 		"comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
@@ -342,11 +346,30 @@ func di() (err error) { //nolint:gocyclo
 	default:
 		return fmt.Errorf("unsupported key encoding: %s", diKeyEnc)
 	}
+
+	var deviceInfo string
+	switch {
+	case diDeviceInfo != "" && diDeviceInfoMac != "":
+		return fmt.Errorf("can't specify both -di-device-info and -di-device-info-mac")
+	case diDeviceInfo != "":
+		deviceInfo = diDeviceInfo
+	case diDeviceInfoMac != "":
+		deviceInfo, err = getMac(diDeviceInfoMac)
+		if err != nil {
+			return fmt.Errorf("error getting device information from iface %s: %w", diDeviceInfoMac, err)
+		}
+	default:
+		deviceInfo, err = getSerial()
+		if err != nil {
+			return fmt.Errorf("error getting device information from the system: %w", err)
+		}
+	}
+
 	cred, err := fdo.DI(context.TODO(), tls.TlsTransport(diURL, nil, insecureTLS), custom.DeviceMfgInfo{
 		KeyType:      keyType,
 		KeyEncoding:  keyEncoding,
 		SerialNumber: strconv.FormatInt(sn.Int64(), 10),
-		DeviceInfo:   "gotest",
+		DeviceInfo:   deviceInfo,
 		CertInfo:     cbor.X509CertificateRequest(*csr),
 	}, fdo.DIConfig{
 		HmacSha256: hmacSha256,
