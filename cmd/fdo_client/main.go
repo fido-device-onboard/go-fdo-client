@@ -5,43 +5,56 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
-var flags = flag.NewFlagSet("main", flag.ContinueOnError)
+var clientFlags *cobra.Command
 
 func main() {
-	if err := flags.Parse(os.Args); err != nil {
+	clientFlags = &cobra.Command{
+		Use:   "fdo_client",
+		Short: "FIDO Device Onboard Client",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFlags(); err != nil {
+				return fmt.Errorf("Validation error: %v", err)
+			}
+			if err := client(); err != nil {
+				return fmt.Errorf("client error: %v", err)
+			}
+			return nil
+		},
+	}
+
+	cflags := clientFlags.Flags()
+	cflags.StringVar(&blobPath, "blob", "cred.bin", "File path of device credential blob")
+	cflags.StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
+	cflags.BoolVar(&debug, "debug", false, "Print HTTP contents")
+	cflags.StringVar(&dlDir, "download", "", "A dir to download files into (FSIM disabled if empty)")
+	cflags.StringVar(&diURL, "di", "http://127.0.0.1:8080", "HTTP base URL for DI server")
+	cflags.StringVar(&diKey, "di-key", "ec384", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
+	cflags.StringVar(&diKeyEnc, "di-key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
+	cflags.BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
+	cflags.StringVar(&kexSuite, "kex", "ECDH384", "Name of cipher suite to use for key exchange (see usage)")
+	cflags.BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
+	cflags.BoolVar(&printDevice, "print", false, "Print device credential blob and stop")
+	cflags.BoolVar(&rvOnly, "rv-only", false, "Perform TO1 then stop")
+	cflags.BoolVar(&resale, "resale", false, "Perform resale")
+	cflags.StringVar(&diDeviceInfo, "di-device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
+	cflags.StringVar(&diDeviceInfoMac, "di-device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
+	cflags.StringVar(&tpmPath, "tpm", "", "Use a TPM at path for device credential secrets")
+	cflags.Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
+	cflags.StringVar(&wgetDir, "wget-dir", "", "A dir to wget files into (FSIM disabled if empty)")
+
+	if err := clientFlags.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	}
-
-	var args []string
-	if flags.NArg() > 1 {
-		args = flags.Args()[1:]
-		if flags.Arg(1) == "--" {
-			args = flags.Args()[2:]
-		}
-	}
-	if err := clientFlags.Parse(args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	if err := validateFlags(); err != nil {
-		fmt.Fprintf(os.Stderr, "Validation error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := client(); err != nil {
-		fmt.Fprintf(os.Stderr, "client error: %v\n", err)
-		os.Exit(2)
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -44,8 +43,7 @@ import (
 	"github.com/fido-device-onboard/go-fdo/tpm"
 )
 
-var clientFlags = flag.NewFlagSet("client", flag.ContinueOnError)
-
+// These variables are set via the command line
 var (
 	debug           bool
 	blobPath        string
@@ -91,6 +89,11 @@ func (files fsVar) Set(paths string) error {
 		files[pathToName(path, abs)] = abs
 	}
 	return nil
+}
+
+// This method is needed to satisfy the CLI parser pflag.Value interface
+func (files fsVar) Type() string {
+	return "fsVar"
 }
 
 // The name of the directory or file is its cleaned path, if absolute. If the
@@ -141,28 +144,6 @@ func (files fsVar) Open(path string) (fs.File, error) {
 		Path: path,
 		Err:  fs.ErrNotExist,
 	}
-}
-
-func init() {
-	clientFlags.StringVar(&blobPath, "blob", "cred.bin", "File path of device credential blob")
-	clientFlags.StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher `suite` to use for encryption (see usage)")
-	clientFlags.BoolVar(&debug, "debug", debug, "Print HTTP contents")
-	clientFlags.StringVar(&dlDir, "download", "", "A `dir` to download files into (FSIM disabled if empty)")
-	clientFlags.StringVar(&diURL, "di", "http://127.0.0.1:8080", "HTTP base `URL` for DI server")
-	clientFlags.StringVar(&diKey, "di-key", "ec384", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
-	clientFlags.StringVar(&diKeyEnc, "di-key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
-	clientFlags.BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
-	clientFlags.StringVar(&kexSuite, "kex", "ECDH384", "Name of cipher `suite` to use for key exchange (see usage)")
-	clientFlags.BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	clientFlags.BoolVar(&printDevice, "print", false, "Print device credential blob and stop")
-	clientFlags.BoolVar(&rvOnly, "rv-only", false, "Perform TO1 then stop")
-	clientFlags.BoolVar(&resale, "resale", false, "Perform resale")
-	clientFlags.StringVar(&diDeviceInfo, "di-device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
-	clientFlags.StringVar(&diDeviceInfoMac, "di-device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
-	clientFlags.StringVar(&tpmPath, "tpm", "", "Use a TPM at `path` for device credential secrets")
-	clientFlags.Var(&uploads, "upload", "List of dirs and `files` to upload files from, "+
-		"comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
-	clientFlags.StringVar(&wgetDir, "wget-dir", "", "A `dir` to wget files into (FSIM disabled if empty)")
 }
 
 func client() error {

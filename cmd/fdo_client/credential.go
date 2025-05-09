@@ -10,12 +10,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/sha512"
-	"flag"
 	"fmt"
 	"hash"
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/pflag"
 
 	"github.com/fido-device-onboard/go-fdo"
 	tpmnv "github.com/fido-device-onboard/go-fdo-client/internal/tpm_utils"
@@ -51,7 +52,7 @@ type fdoTpmDeviceCredential struct {
 
 func tpmCred() (hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
 	var diKeyFlagSet bool
-	clientFlags.Visit(func(flag *flag.Flag) {
+	clientFlags.Flags().Visit(func(flag *pflag.Flag) {
 		if flag == nil {
 			slog.Error("Unexpected nil flag encountered")
 			return
