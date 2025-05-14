@@ -177,7 +177,7 @@ func client() error {
 
 	deviceStatus = FDO_STATE_PC
 
-	if !printDevice && !loadDeviceStatus(&deviceStatus) {
+	if !loadDeviceStatus(&deviceStatus) {
 		return fmt.Errorf("load device status failed")
 	}
 
@@ -197,10 +197,6 @@ func client() error {
 		}
 	}
 
-	if printDevice {
-		return nil
-	}
-
 	printDeviceStatus(deviceStatus)
 
 	if deviceStatus == FDO_STATE_IDLE {
@@ -215,7 +211,7 @@ func client() error {
 		if err == nil && cleanup != nil {
 			defer func() { _ = cleanup() }()
 		}
-		if err != nil || printDevice {
+		if err != nil {
 			return err
 		}
 
@@ -560,6 +556,7 @@ func isResolvableDNS(dns string) bool {
 	_, err := net.LookupHost(dns)
 	return err == nil
 }
+
 func printDeviceStatus(status FdoDeviceState) {
 	switch status {
 	case FDO_STATE_PRE_DI:

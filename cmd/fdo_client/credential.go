@@ -171,9 +171,6 @@ func readCredFile(v any) error {
 	if err := cbor.Unmarshal(blobData, v); err != nil {
 		return fmt.Errorf("error parsing blob credential %q: %w", blobPath, err)
 	}
-	if printDevice {
-		fmt.Printf("%+v\n", v)
-	}
 	return nil
 }
 
@@ -236,9 +233,6 @@ func readTpmCred(v any) error {
 		return fmt.Errorf("error parsing credential: %w", err)
 	}
 
-	if printDevice {
-		fmt.Printf("%+v\n", v)
-	}
 	return nil
 }
 

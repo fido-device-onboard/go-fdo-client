@@ -21,21 +21,19 @@ func main() {
 	clientFlags = &cobra.Command{
 		Use:   "fdo_client",
 		Short: "FIDO Device Onboard Client",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateFlags(); err != nil {
-				return fmt.Errorf("Validation error: %v", err)
-			}
-			if err := client(); err != nil {
-				return fmt.Errorf("client error: %v", err)
-			}
-			return nil
-		},
 	}
 
+	clientFlags.AddCommand(printCmd)
+	clientFlags.AddCommand(onboardCmd)
+	clientFlags.AddCommand(deviceInitCmd)
+
+	pflags := clientFlags.PersistentFlags()
+	pflags.StringVar(&blobPath, "blob", "cred.bin", "File path of device credential blob")
+	pflags.BoolVar(&debug, "debug", false, "Print HTTP contents")
+	pflags.StringVar(&tpmPath, "tpm", "", "Use a TPM at path for device credential secrets")
+
 	cflags := clientFlags.Flags()
-	cflags.StringVar(&blobPath, "blob", "cred.bin", "File path of device credential blob")
 	cflags.StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
-	cflags.BoolVar(&debug, "debug", false, "Print HTTP contents")
 	cflags.StringVar(&dlDir, "download", "", "A dir to download files into (FSIM disabled if empty)")
 	cflags.StringVar(&diURL, "di", "http://127.0.0.1:8080", "HTTP base URL for DI server")
 	cflags.StringVar(&diKey, "di-key", "ec384", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
@@ -43,12 +41,10 @@ func main() {
 	cflags.BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
 	cflags.StringVar(&kexSuite, "kex", "ECDH384", "Name of cipher suite to use for key exchange (see usage)")
 	cflags.BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	cflags.BoolVar(&printDevice, "print", false, "Print device credential blob and stop")
 	cflags.BoolVar(&rvOnly, "rv-only", false, "Perform TO1 then stop")
 	cflags.BoolVar(&resale, "resale", false, "Perform resale")
 	cflags.StringVar(&diDeviceInfo, "di-device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
 	cflags.StringVar(&diDeviceInfoMac, "di-device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
-	cflags.StringVar(&tpmPath, "tpm", "", "Use a TPM at path for device credential secrets")
 	cflags.Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
 	cflags.StringVar(&wgetDir, "wget-dir", "", "A dir to wget files into (FSIM disabled if empty)")
 
