@@ -16,8 +16,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/pflag"
-
 	"github.com/fido-device-onboard/go-fdo"
 	tpmnv "github.com/fido-device-onboard/go-fdo-client/internal/tpm_utils"
 	"github.com/fido-device-onboard/go-fdo/blob"
@@ -51,15 +49,7 @@ type fdoTpmDeviceCredential struct {
 }
 
 func tpmCred() (hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
-	var diKeyFlagSet bool
-	clientFlags.Flags().Visit(func(flag *pflag.Flag) {
-		if flag == nil {
-			slog.Error("Unexpected nil flag encountered")
-			return
-		}
-		diKeyFlagSet = diKeyFlagSet || flag.Name == "di-key"
-	})
-	if !diKeyFlagSet {
+	if diKey == "" {
 		return nil, nil, nil, nil, fmt.Errorf("-di-key must be set explicitly when using a TPM")
 	}
 
@@ -246,6 +236,9 @@ func saveTpmCred(dc any) error {
 	}
 	data := buf.Bytes()
 
+	if diKey == "" {
+		return fmt.Errorf("DI key not provided (use --di-key)")
+	}
 	tpmHashAlg, err := getTPMAlgorithm(diKey)
 	if err != nil {
 		return err

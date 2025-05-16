@@ -17,6 +17,10 @@ var deviceInitCmd = &cobra.Command{
 		if err := validateFlags(); err != nil {
 			return fmt.Errorf("Validation error: %v", err)
 		}
+		// check for mandatory flags
+		if diKey == "" {
+			return fmt.Errorf("--di-key is mandatory")
+		}
 		if err := client(); err != nil {
 			return fmt.Errorf("client error: %v", err)
 		}
@@ -26,8 +30,9 @@ var deviceInitCmd = &cobra.Command{
 
 func init() {
 	deviceInitCmd.Flags().StringVar(&diURL, "di", "http://127.0.0.1:8080", "HTTP base URL for DI server")
-	deviceInitCmd.Flags().StringVar(&diKey, "di-key", "ec384", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
+	deviceInitCmd.Flags().StringVar(&diKey, "di-key", "", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 	deviceInitCmd.Flags().StringVar(&diKeyEnc, "di-key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
 	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "di-device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
 	deviceInitCmd.Flags().StringVar(&diDeviceInfoMac, "di-device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
+	deviceInitCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
 }

@@ -32,22 +32,6 @@ func main() {
 	pflags.BoolVar(&debug, "debug", false, "Print HTTP contents")
 	pflags.StringVar(&tpmPath, "tpm", "", "Use a TPM at path for device credential secrets")
 
-	cflags := clientFlags.Flags()
-	cflags.StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
-	cflags.StringVar(&dlDir, "download", "", "A dir to download files into (FSIM disabled if empty)")
-	cflags.StringVar(&diURL, "di", "http://127.0.0.1:8080", "HTTP base URL for DI server")
-	cflags.StringVar(&diKey, "di-key", "ec384", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
-	cflags.StringVar(&diKeyEnc, "di-key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
-	cflags.BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
-	cflags.StringVar(&kexSuite, "kex", "ECDH384", "Name of cipher suite to use for key exchange (see usage)")
-	cflags.BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	cflags.BoolVar(&rvOnly, "rv-only", false, "Perform TO1 then stop")
-	cflags.BoolVar(&resale, "resale", false, "Perform resale")
-	cflags.StringVar(&diDeviceInfo, "di-device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
-	cflags.StringVar(&diDeviceInfoMac, "di-device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
-	cflags.Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
-	cflags.StringVar(&wgetDir, "wget-dir", "", "A dir to wget files into (FSIM disabled if empty)")
-
 	if err := clientFlags.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -90,9 +74,11 @@ func validateFlags() error {
 		}
 	}
 
-	validDiKeys := []string{"ec256", "ec384", "rsa2048", "rsa3072"}
-	if !contains(validDiKeys, diKey) {
-		return fmt.Errorf("invalid DI key: %s", diKey)
+	if diKey != "" {
+		validDiKeys := []string{"ec256", "ec384", "rsa2048", "rsa3072"}
+		if !contains(validDiKeys, diKey) {
+			return fmt.Errorf("invalid DI key: %s", diKey)
+		}
 	}
 
 	validDiKeyEncs := []string{"x509", "x5chain", "cose"}
@@ -100,9 +86,11 @@ func validateFlags() error {
 		return fmt.Errorf("invalid DI key encoding: %s", diKeyEnc)
 	}
 
-	validKexSuites := []string{"DHKEXid14", "DHKEXid15", "ASYMKEX2048", "ASYMKEX3072", "ECDH256", "ECDH384"}
-	if !contains(validKexSuites, kexSuite) {
-		return fmt.Errorf("invalid key exchange suite: %s", kexSuite)
+	if kexSuite != "" {
+		validKexSuites := []string{"DHKEXid14", "DHKEXid15", "ASYMKEX2048", "ASYMKEX3072", "ECDH256", "ECDH384"}
+		if !contains(validKexSuites, kexSuite) {
+			return fmt.Errorf("invalid key exchange suite: %s", kexSuite)
+		}
 	}
 
 	for path := range uploads {
