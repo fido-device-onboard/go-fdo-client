@@ -1,0 +1,70 @@
+// SPDX-FileCopyrightText: (C) 2024 Intel Corporation
+// SPDX-License-Identifier: Apache 2.0
+
+package cmd
+
+import (
+	"context"
+	"os"
+	"os/signal"
+
+	"github.com/spf13/cobra"
+	"github.com/fido-device-onboard/go-fdo/tpm"
+)
+
+var (
+	debug         bool
+	blobPath      string
+	tpmc          tpm.Closer
+	tpmPath       string
+	clientContext context.Context
+)
+
+var rootCmd = &cobra.Command{
+	CompletionOptions: cobra.CompletionOptions{
+		DisableDefaultCmd: true,
+	},
+	Use:   "fdo_client",
+	Short: "FIDO Device Onboard Client",
+	Long: `FIDO Device Onboard Client`,
+}
+
+// Called by main to parse the command line and execute the subcommand
+func Execute() error {
+	// Catch interrupts
+	clientContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt)
+	go func() {
+		defer signal.Stop(sigs)
+		select {
+		case <-clientContext.Done():
+		case <-sigs:
+			cancel()
+		}
+	}()
+
+	err := rootCmd.Execute()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func init() {
+	pflags := rootCmd.PersistentFlags()
+	pflags.StringVar(&blobPath, "blob", "", "File path of device credential blob")
+	pflags.BoolVar(&debug, "debug", false, "Print HTTP contents")
+	pflags.StringVar(&tpmPath, "tpm", "", "Use a TPM at path for device credential secrets")
+	rootCmd.MarkFlagsOneRequired("blob", "tpm")
+}
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
