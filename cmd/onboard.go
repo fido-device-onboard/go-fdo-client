@@ -17,27 +17,27 @@ import (
 	"time"
 
 	"github.com/fido-device-onboard/go-fdo"
+	"github.com/fido-device-onboard/go-fdo-client/internal/tls"
+	"github.com/fido-device-onboard/go-fdo-client/internal/tpm_utils"
 	"github.com/fido-device-onboard/go-fdo/cose"
 	"github.com/fido-device-onboard/go-fdo/fsim"
 	"github.com/fido-device-onboard/go-fdo/kex"
 	"github.com/fido-device-onboard/go-fdo/protocol"
 	"github.com/fido-device-onboard/go-fdo/serviceinfo"
-	"github.com/fido-device-onboard/go-fdo-client/internal/tls"
-	"github.com/fido-device-onboard/go-fdo-client/internal/tpm_utils"
 	"github.com/spf13/cobra"
 )
 
 type fsVar map[string]string
 
 var (
-	cipherSuite     string
-	dlDir           string
-	echoCmds        bool
-	kexSuite        string
-	rvOnly          bool
-	resale          bool
-	uploads         = make(fsVar)
-	wgetDir         string
+	cipherSuite string
+	dlDir       string
+	echoCmds    bool
+	kexSuite    string
+	rvOnly      bool
+	resale      bool
+	uploads     = make(fsVar)
+	wgetDir     string
 )
 var validCipherSuites = []string{
 	"A128GCM", "A192GCM", "A256GCM",
@@ -69,7 +69,7 @@ var onboardCmd = &cobra.Command{
 			defer tpmc.Close()
 		}
 
-		deviceStatus, err := loadDeviceStatus();
+		deviceStatus, err := loadDeviceStatus()
 		if err != nil {
 			return fmt.Errorf("load device status failed: %w", err)
 		}
@@ -94,7 +94,7 @@ func init() {
 	rootCmd.AddCommand(onboardCmd)
 	onboardCmd.Flags().StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
 	onboardCmd.Flags().StringVar(&dlDir, "download", "", "A dir to download files into (FSIM disabled if empty)")
-	onboardCmd.Flags().StringVar(&diKey, "di-key", "", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
+	onboardCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 	onboardCmd.Flags().BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
 	onboardCmd.Flags().StringVar(&kexSuite, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
 	onboardCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
@@ -102,6 +102,9 @@ func init() {
 	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
 	onboardCmd.Flags().Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
 	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "A dir to wget files into (FSIM disabled if empty)")
+
+	onboardCmd.MarkFlagRequired("key")
+	onboardCmd.MarkFlagRequired("kex")
 }
 
 func doOnboard() error {
@@ -420,14 +423,13 @@ func validateOnboardFlags() error {
 		return fmt.Errorf("invalid download directory: %s", dlDir)
 	}
 
-	if !contains(validDiKeys, diKey) {
-		return fmt.Errorf("invalid DI key: %s", diKey)
+	if err := validateDiKey(); err != nil {
+		return err
 	}
 
-	if kexSuite != "" {
-		if !contains(validKexSuites, kexSuite) {
-			return fmt.Errorf("invalid key exchange suite: %s", kexSuite)
-		}
+	if !contains(validKexSuites, kexSuite) {
+		return fmt.Errorf("invalid key exchange suite: '%s', options [%s]",
+			kexSuite, strings.Join(validKexSuites, ", "))
 	}
 
 	for path := range uploads {
@@ -451,4 +453,3 @@ func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil || !os.IsNotExist(err)
 }
-

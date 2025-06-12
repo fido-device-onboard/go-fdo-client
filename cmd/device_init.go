@@ -26,12 +26,12 @@ import (
 
 	"github.com/fido-device-onboard/go-fdo"
 	"github.com/fido-device-onboard/go-fdo-client/internal/tls"
+	"github.com/fido-device-onboard/go-fdo-client/internal/tpm_utils"
 	"github.com/fido-device-onboard/go-fdo/blob"
 	"github.com/fido-device-onboard/go-fdo/cbor"
 	"github.com/fido-device-onboard/go-fdo/custom"
 	"github.com/fido-device-onboard/go-fdo/protocol"
 	"github.com/fido-device-onboard/go-fdo/tpm"
-	"github.com/fido-device-onboard/go-fdo-client/internal/tpm_utils"
 	"github.com/spf13/cobra"
 )
 
@@ -75,9 +75,9 @@ var deviceInitCmd = &cobra.Command{
 		if deviceStatus == FDO_STATE_PRE_DI {
 			return doDI()
 		} else if deviceStatus == FDO_STATE_PRE_TO1 {
-			fmt.Println("Device already initialized, ready to on-board")
+			fmt.Println("Device already initialized, ready to onboard")
 		} else if deviceStatus == FDO_STATE_IDLE {
-			return fmt.Errorf("Device has already completed on-boarding")
+			return fmt.Errorf("Device has already completed onboarding")
 		} else {
 			return fmt.Errorf("Device state is invalid: %v", deviceStatus)
 		}
@@ -88,14 +88,16 @@ var deviceInitCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(deviceInitCmd)
-	deviceInitCmd.Flags().StringVar(&diURL, "di", "http://127.0.0.1:8080", "HTTP base URL for DI server")
-	deviceInitCmd.Flags().StringVar(&diKey, "di-key", "", "Key for device credential [options: ec256, ec384, rsa2048, rsa3072]")
-	deviceInitCmd.Flags().StringVar(&diKeyEnc, "di-key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
-	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "di-device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
-	deviceInitCmd.Flags().StringVar(&diDeviceInfoMac, "di-device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
+	deviceInitCmd.Flags().StringVar(&diURL, "server", "http://127.0.0.1:8080", "HTTP base URL for DI server")
+	deviceInitCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
+	deviceInitCmd.Flags().StringVar(&diKeyEnc, "key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
+	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
+	deviceInitCmd.Flags().StringVar(&diDeviceInfoMac, "device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
 	deviceInitCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	deviceInitCmd.MarkFlagRequired("di-key")
-	deviceInitCmd.MarkFlagsMutuallyExclusive("di-device-info", "di-device-info-mac")
+
+	// User must explicitly select the key type for the device credentials since the TPM resources are limited
+	deviceInitCmd.MarkFlagRequired("key")
+	deviceInitCmd.MarkFlagsMutuallyExclusive("device-info", "device-info-mac")
 }
 
 func doDI() (err error) { //nolint:gocyclo
@@ -124,7 +126,7 @@ func doDI() (err error) { //nolint:gocyclo
 		keyType = protocol.RsaPkcsKeyType
 		key, err = rsa.GenerateKey(rand.Reader, 3072)
 	default:
-		return fmt.Errorf("unknown key type: %s", diKey)
+		return fmt.Errorf("unsupported key type: %s", diKey)
 	}
 	if err != nil {
 		return fmt.Errorf("error generating device key: %w", err)
@@ -173,7 +175,7 @@ func doDI() (err error) { //nolint:gocyclo
 	var deviceInfo string
 	switch {
 	case diDeviceInfo != "" && diDeviceInfoMac != "":
-		return fmt.Errorf("can't specify both -di-device-info and -di-device-info-mac")
+		return fmt.Errorf("can't specify both --device-info and --device-info-mac")
 	case diDeviceInfo != "":
 		deviceInfo = diDeviceInfo
 	case diDeviceInfoMac != "":
@@ -232,6 +234,13 @@ func doDI() (err error) { //nolint:gocyclo
 	return err
 }
 
+func validateDiKey() error {
+	if !contains(validDiKeys, diKey) {
+		return fmt.Errorf("invalid --key type: '%s' [options: %s]", diKey, strings.Join(validDiKeys, ", "))
+	}
+	return nil
+}
+
 func validateDIFlags() error {
 	// idURL
 	parsedURL, err := url.ParseRequestURI(diURL)
@@ -249,8 +258,8 @@ func validateDIFlags() error {
 		return fmt.Errorf("invalid port: %s", port)
 	}
 
-	if !contains(validDiKeys, diKey) {
-		return fmt.Errorf("invalid DI key: %s", diKey)
+	if err = validateDiKey(); err != nil {
+		return err
 	}
 
 	if !contains(validDiKeyEncs, diKeyEnc) {
@@ -291,4 +300,3 @@ func isValidPort(port string) bool {
 	}
 	return true
 }
-

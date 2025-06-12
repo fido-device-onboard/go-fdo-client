@@ -49,10 +49,6 @@ type fdoTpmDeviceCredential struct {
 }
 
 func tpmCred() (hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
-	if diKey == "" {
-		return nil, nil, nil, nil, fmt.Errorf("-di-key must be set explicitly when using a TPM")
-	}
-
 	// Use TPM keys for HMAC and Device Key
 	h256, err := tpm.NewHmac(tpmc, crypto.SHA256)
 	if err != nil {
@@ -75,7 +71,7 @@ func tpmCred() (hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
 	case "rsa3072":
 		key, err = tpm.GenerateRSAKey(tpmc, 3072)
 	default:
-		err = fmt.Errorf("unsupported key type")
+		err = fmt.Errorf("unsupported key type: %s", diKey)
 	}
 	if err != nil {
 		_ = tpmc.Close()
@@ -236,9 +232,6 @@ func saveTpmCred(dc any) error {
 	}
 	data := buf.Bytes()
 
-	if diKey == "" {
-		return fmt.Errorf("DI key not provided (use --di-key)")
-	}
 	tpmHashAlg, err := getTPMAlgorithm(diKey)
 	if err != nil {
 		return err
