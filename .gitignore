@@ -3,3 +3,4 @@ go.work.sum
 *.bin
 *.db
 .vscode/*
+go-fdo-client
