@@ -48,9 +48,13 @@ var validDiKeys = []string{"ec256", "ec384", "rsa2048", "rsa3072"}
 var validDiKeyEncs = []string{"x509", "x5chain", "cose"}
 
 var deviceInitCmd = &cobra.Command{
-	Use:   "device-init",
+	Use:   "device-init <server-url>",
 	Short: "Run device initialization (DI)",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Set the server URL from the positional argument
+		diURL = args[0]
+
 		if err := validateDIFlags(); err != nil {
 			return fmt.Errorf("Validation error: %v", err)
 		}
@@ -88,7 +92,6 @@ var deviceInitCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(deviceInitCmd)
-	deviceInitCmd.Flags().StringVar(&diURL, "server", "http://127.0.0.1:8080", "HTTP base URL for DI server")
 	deviceInitCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 	deviceInitCmd.Flags().StringVar(&diKeyEnc, "key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
 	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")

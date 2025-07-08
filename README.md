@@ -48,7 +48,7 @@ $ ./fdo_client device-init -h
 Run device initialization (DI)
 
 Usage:
-  fdo_client device-init [flags]
+  fdo_client device-init <server-url> [flags]
 
 Flags:
       --device-info string       Device information for device credentials, if not specified, it'll be gathered from the system
@@ -57,7 +57,6 @@ Flags:
       --insecure-tls             Skip TLS certificate verification
       --key string               Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]
       --key-enc string           Public key encoding to use for manufacturer key [x509,x5chain,cose] (default "x509")
-      --server string            HTTP base URL for DI server (default "http://127.0.0.1:8080")
 
 Global Flags:
       --blob string   File path of device credential blob
@@ -125,7 +124,7 @@ rm cred.bin
 ### Run the FDO Client with DI server URL
 Run the FDO client, specifying the DI URL, key type and credentials blob file (on linux systems, root is required to properly gather a device identifier):
 ```
-./fdo_client device-init --device-info gotest --server http://127.0.0.1:8038 --key ec256 --debug --blob cred.bin
+./fdo_client device-init http://127.0.0.1:8038 --device-info gotest --key ec256 --debug --blob cred.bin
 ```
 
 ### Print FDO Client Configuration or Status
@@ -167,7 +166,7 @@ Ensure `tpm2_tools` is installed on your system.
 Run FDO client device-init, specifying the DI server URL with the TPM resource manager path specified.
 The supported key type must always be explicitly configured through the --key flag:
 ```
-./fdo_client device-init --server http://127.0.0.1:8038 --device-info gotest --key ec256 --tpm /dev/tpmrm0 --debug
+./fdo_client device-init http://127.0.0.1:8038 --device-info gotest --key ec256 --tpm /dev/tpmrm0 --debug
 ```
 
 ### Print FDO Client Configuration or Status
