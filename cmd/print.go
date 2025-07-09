@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"github.com/spf13/cobra"
+
 	"github.com/fido-device-onboard/go-fdo-client/internal/tpm_utils"
+	"github.com/spf13/cobra"
 )
 
 var printCmd = &cobra.Command{
@@ -55,4 +56,3 @@ func isValidPath(p string) bool {
 	absPath, err := filepath.Abs(p)
 	return err == nil && absPath != ""
 }
-

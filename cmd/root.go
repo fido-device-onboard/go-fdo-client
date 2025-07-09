@@ -8,8 +8,8 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/spf13/cobra"
 	"github.com/fido-device-onboard/go-fdo/tpm"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -26,7 +26,7 @@ var rootCmd = &cobra.Command{
 	},
 	Use:   "fdo_client",
 	Short: "FIDO Device Onboard Client",
-	Long: `FIDO Device Onboard Client`,
+	Long:  `FIDO Device Onboard Client`,
 }
 
 // Called by main to parse the command line and execute the subcommand
@@ -59,12 +59,3 @@ func init() {
 	pflags.StringVar(&tpmPath, "tpm", "", "Use a TPM at path for device credential secrets")
 	rootCmd.MarkFlagsOneRequired("blob", "tpm")
 }
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-

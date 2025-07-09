@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -415,7 +416,7 @@ func pathToName(path, abs string) string {
 }
 
 func validateOnboardFlags() error {
-	if !contains(validCipherSuites, cipherSuite) {
+	if !slices.Contains(validCipherSuites, cipherSuite) {
 		return fmt.Errorf("invalid cipher suite: %s", cipherSuite)
 	}
 
@@ -427,7 +428,7 @@ func validateOnboardFlags() error {
 		return err
 	}
 
-	if !contains(validKexSuites, kexSuite) {
+	if !slices.Contains(validKexSuites, kexSuite) {
 		return fmt.Errorf("invalid key exchange suite: '%s', options [%s]",
 			kexSuite, strings.Join(validKexSuites, ", "))
 	}

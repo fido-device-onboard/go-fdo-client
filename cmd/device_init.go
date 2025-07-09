@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -238,7 +239,7 @@ func doDI() (err error) { //nolint:gocyclo
 }
 
 func validateDiKey() error {
-	if !contains(validDiKeys, diKey) {
+	if !slices.Contains(validDiKeys, diKey) {
 		return fmt.Errorf("invalid --key type: '%s' [options: %s]", diKey, strings.Join(validDiKeys, ", "))
 	}
 	return nil
@@ -265,7 +266,7 @@ func validateDIFlags() error {
 		return err
 	}
 
-	if !contains(validDiKeyEncs, diKeyEnc) {
+	if !slices.Contains(validDiKeyEncs, diKeyEnc) {
 		return fmt.Errorf("invalid DI key encoding: %s", diKeyEnc)
 	}
 

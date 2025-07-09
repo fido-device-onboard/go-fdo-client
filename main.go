@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+
 	"github.com/fido-device-onboard/go-fdo-client/cmd"
 )
 
