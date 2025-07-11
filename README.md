@@ -16,18 +16,18 @@
 The client application can be built with `go build` directly,
 
 ```console
-$ go build -o fdo_client
+$ go build
 ```
 
 ## FDO Client Command Syntax
 
 ```console
-$ ./fdo_client -h
+$ ./go-fdo-client -h
 
 FIDO Device Onboard Client
 
 Usage:
-  fdo_client [command]
+  go-fdo-client [command]
 
 Available Commands:
   device-init Run device initialization (DI)
@@ -38,17 +38,17 @@ Available Commands:
 Flags:
       --blob string   File path of device credential blob
       --debug         Print HTTP contents
-  -h, --help          help for fdo_client
+  -h, --help          help for go-fdo-client
       --tpm string    Use a TPM at path for device credential secrets
 
-Use "fdo_client [command] --help" for more information about a command.
+Use "go-fdo-client [command] --help" for more information about a command.
 
 
-$ ./fdo_client device-init -h
+$ ./go-fdo-client device-init -h
 Run device initialization (DI)
 
 Usage:
-  fdo_client device-init <server-url> [flags]
+  go-fdo-client device-init <server-url> [flags]
 
 Flags:
       --device-info string       Device information for device credentials, if not specified, it'll be gathered from the system
@@ -64,11 +64,11 @@ Global Flags:
       --tpm string    Use a TPM at path for device credential secrets
 
 
-$ ./fdo_client onboard -h
+$ ./go-fdo-client onboard -h
 Run FDO TO1 and TO2 onboarding
 
 Usage:
-  fdo_client onboard [flags]
+  go-fdo-client onboard [flags]
 
 Flags:
       --cipher string     Name of cipher suite to use for encryption (see usage) (default "A128GCM")
@@ -124,13 +124,13 @@ rm cred.bin
 ### Run the FDO Client with DI server URL
 Run the FDO client, specifying the DI URL, key type and credentials blob file (on linux systems, root is required to properly gather a device identifier):
 ```
-./fdo_client device-init http://127.0.0.1:8038 --device-info gotest --key ec256 --debug --blob cred.bin
+./go-fdo-client device-init http://127.0.0.1:8038 --device-info gotest --key ec256 --debug --blob cred.bin
 ```
 
 ### Print FDO Client Configuration or Status
 Print the FDO client configuration or status:
 ```
-./fdo_client print --blob cred.bin
+./go-fdo-client print --blob cred.bin
 ```
 
 ### Execute TO0 from FDO Go Server
@@ -139,13 +139,13 @@ TO0 will be completed in the respective Owner and RV.
 ### Run the FDO Client onboard command
 Perform FDO client onboard. The supported key type and key exchange suite must always be explicitly configured through the --key and --kex flags:
 ```
-./fdo_client onboard --key ec256 --kex ECDH256 --debug --blob cred.bin
+./go-fdo-client onboard --key ec256 --kex ECDH256 --debug --blob cred.bin
 ```
 
 ### Optional: Run the FDO Client in RV-Only Mode
 Run the FDO client in RV-only mode, which stops after TO1 is performed:
 ```
-./fdo_client onboard --rv-only --key ec256 --kex ECDH256 --debug --blob cred.bin
+./go-fdo-client onboard --rv-only --key ec256 --kex ECDH256 --debug --blob cred.bin
 ```
 
 ## Running the FDO Client with a TPM device
@@ -166,13 +166,13 @@ Ensure `tpm2_tools` is installed on your system.
 Run FDO client device-init, specifying the DI server URL with the TPM resource manager path specified.
 The supported key type must always be explicitly configured through the --key flag:
 ```
-./fdo_client device-init http://127.0.0.1:8038 --device-info gotest --key ec256 --tpm /dev/tpmrm0 --debug
+./go-fdo-client device-init http://127.0.0.1:8038 --device-info gotest --key ec256 --tpm /dev/tpmrm0 --debug
 ```
 
 ### Print FDO Client Configuration or Status
 Print the FDO client configuration or status:
 ```
-./fdo_client print --tpm /dev/tpmrm0
+./go-fdo-client print --tpm /dev/tpmrm0
 ```
 
 ### Execute TO0 from FDO Go Server
@@ -181,12 +181,12 @@ TO0 will be completed in the respective Owner and RV.
 ### Run the FDO Client onboard command
 Perform FDO client onboard. The supported key type and key exchange suite must always be explicitly configured through the --key and --kex flags:
 ```
-./fdo_client onboard --key ec256 --kex ECDH256 --tpm /dev/tpmrm0 --debug
+./go-fdo-client onboard --key ec256 --kex ECDH256 --tpm /dev/tpmrm0 --debug
 ```
 
 ### Optional: Run the FDO Client in RV-Only Mode
 Run the FDO client in RV-only mode, which stops after TO1 is performed:
 The supported key type and key exchange suite must always be explicitly configured through the --key and --kex flags:
 ```
-./fdo_client onboard --rv-only --key ec256 --kex ECDH256 --tpm /dev/tpmrm0  --debug
+./go-fdo-client onboard --rv-only --key ec256 --kex ECDH256 --tpm /dev/tpmrm0  --debug
 ```
