@@ -5,7 +5,7 @@ services:
     container_name: manufacturer
     hostname: manufacturer
     image: manufacturer
-    build: https://github.com/fido-device-onboard/go-fdo-server.git#main
+    build: https://github.com/fido-device-onboard/go-fdo-server.git#${GO_FDO_SERVER_BRANCH:-main}
     environment:
       TZ: Europe/Madrid
     ports:
@@ -25,7 +25,7 @@ services:
     container_name: rendezvous
     hostname: rendezvous
     image: rendezvous
-    build: https://github.com/fido-device-onboard/go-fdo-server.git#main
+    build: https://github.com/fido-device-onboard/go-fdo-server.git#${GO_FDO_SERVER_BRANCH:-main}
     environment:
       TZ: Europe/Madrid
     ports:
@@ -46,7 +46,7 @@ services:
     container_name: owner
     hostname: owner
     image: owner
-    build: https://github.com/fido-device-onboard/go-fdo-server.git#main
+    build: https://github.com/fido-device-onboard/go-fdo-server.git#${GO_FDO_SERVER_BRANCH:-main}
     environment:
       TZ: Europe/Madrid
     ports:
