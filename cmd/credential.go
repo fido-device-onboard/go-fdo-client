@@ -182,7 +182,8 @@ func updateCred(newDC fdo.DeviceCredential, state FdoDeviceState) error {
 
 func saveCred(dc any) error {
 	// Encode device credential to temp file
-	tmp, err := os.CreateTemp(".", "fdo_cred_*")
+	tmpbase := filepath.Dir(blobPath)
+	tmp, err := os.CreateTemp(tmpbase, "fdo_cred_*")
 	if err != nil {
 		return fmt.Errorf("error creating temp file for device credential: %w", err)
 	}
