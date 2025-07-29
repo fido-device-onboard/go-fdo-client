@@ -75,7 +75,7 @@ send_voucher_to_owner () {
   local guid
   guid=$(go-fdo-client --blob creds.bin --debug print | grep GUID | awk '{print $2}')
   curl --fail --verbose --silent "http://${manufacturer_service}/api/v1/vouchers?guid=${guid}" -o ownervoucher
-  curl --fail --verbose --silent "http://${owner_service}/api/v1/owner/vouchers" -d @ownervoucher
+  curl -X POST --fail --verbose --silent "http://${owner_service}/api/v1/owner/vouchers" --data-binary @ownervoucher
 }
 
 run_to0 () {
