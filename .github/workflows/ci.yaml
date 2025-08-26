@@ -12,7 +12,7 @@ on:
   pull_request:
 jobs:
   test-makefile:
-    name: Build and test onboarding (makefile)
+    name: build and test makefile
     runs-on: ubuntu-latest
     steps:
       - name: Install golang
@@ -57,9 +57,10 @@ jobs:
           get_server_logs
 
   test-container:
-    name: Build and test onboarding (containers)
+    name: build and test containers
     runs-on: ubuntu-latest
     steps:
+
       - name: Check out repository code
         uses: actions/checkout@v4
 
