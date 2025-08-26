@@ -159,9 +159,7 @@ run_to0 () {
 
 run_fido_device_onboard () {
   local log=$1
-  cd ${creds_dir}
   go-fdo-client --blob "${device_credentials}" --debug onboard --key ec256 --kex ECDH256 | tee "${log}"
-  cd -
   grep 'FIDO Device Onboard Complete' "${log}"
 }
 
