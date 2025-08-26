@@ -10,7 +10,18 @@ services:
       TZ: Europe/Madrid
     ports:
       - 8038:8038
-    command: --db=/tmp/sqlite.db --db-pass '2=,%95QF<uTLLHt' --debug serve manufacturer:8038
+    command:
+     - --db=/tmp/sqlite.db
+     - --db-pass='2=,%95QF<uTLLHt' \
+     - --debug
+     - manufacturing
+     - manufacturer:8038
+     - --manufacturing-key=/tmp/certs/manufacturer.key
+     - --owner-cert=/tmp/certs/owner.crt
+     - --device-ca-cert=/tmp/certs/device-ca.crt
+     - --device-ca-key=/tmp/certs/device-ca.key
+    volumes:
+      - /tmp/certs:/tmp/certs
     networks:
       - fdo
     restart: unless-stopped
@@ -30,7 +41,12 @@ services:
       TZ: Europe/Madrid
     ports:
       - 8041:8041
-    command: --db=/tmp/sqlite.db --db-pass '2=,%95QF<uTLLHt' --debug serve rendezvous:8041
+    command:
+      - --db=/tmp/sqlite.db
+      - --db-pass='2=,%95QF<uTLLHt'
+      - --debug
+      - rendezvous
+      - rendezvous:8041
     networks:
       - fdo
     restart: unless-stopped
@@ -41,7 +57,6 @@ services:
       retries: 5
       start_period: 5s
 
-
   owner:
     container_name: owner
     hostname: owner
@@ -51,7 +66,16 @@ services:
       TZ: Europe/Madrid
     ports:
       - 8043:8043
-    command: --db=/tmp/sqlite.db --db-pass '2=,%95QF<uTLLHt' --debug serve owner:8043
+    command:
+      - --db=/tmp/sqlite.db
+      - --db-pass='2=,%95QF<uTLLHt'
+      - --debug
+      - owner
+      - owner:8043
+      - --owner-key=/tmp/certs/owner.key
+      - --device-ca-cert=/tmp/certs/device-ca.crt
+    volumes:
+      - /tmp/certs:/tmp/certs
     networks:
       - fdo
     restart: unless-stopped
