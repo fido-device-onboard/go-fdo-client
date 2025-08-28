@@ -24,9 +24,10 @@ var rootCmd = &cobra.Command{
 	CompletionOptions: cobra.CompletionOptions{
 		DisableDefaultCmd: true,
 	},
-	Use:   "fdo_client",
-	Short: "FIDO Device Onboard Client",
-	Long:  `FIDO Device Onboard Client`,
+	SilenceUsage: true,
+	Use:          "fdo_client",
+	Short:        "FIDO Device Onboard Client",
+	Long:         `FIDO Device Onboard Client`,
 }
 
 // Called by main to parse the command line and execute the subcommand
