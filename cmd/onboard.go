@@ -36,7 +36,6 @@ var (
 	dlDir       string
 	echoCmds    bool
 	kexSuite    string
-	rvOnly      bool
 	resale      bool
 	uploads     = make(fsVar)
 	wgetDir     string
@@ -100,7 +99,6 @@ func init() {
 	onboardCmd.Flags().BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
 	onboardCmd.Flags().StringVar(&kexSuite, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
 	onboardCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	onboardCmd.Flags().BoolVar(&rvOnly, "rv-only", false, "Perform TO1 then stop")
 	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
 	onboardCmd.Flags().Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
 	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "A dir to wget files into (FSIM disabled if empty)")
@@ -143,9 +141,6 @@ func doOnboard() error {
 	})
 	if err != nil {
 		return err
-	}
-	if rvOnly {
-		return nil
 	}
 	if newDC == nil {
 		fmt.Println("Credential not updated (Credential Reuse Protocol")
@@ -203,9 +198,11 @@ TO1:
 	if to1d == nil {
 		return nil, errors.Join(to1dErrs...)
 	}
+	var to2URLsErrors []error
 	for _, to2Addr := range to1d.Payload.Val.RV {
 		if to2Addr.DNSAddress == nil && to2Addr.IPAddress == nil {
 			slog.Error("Error: Both IP and DNS can't be null")
+			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("both IP and DNS can't be null"))
 			continue
 		}
 
@@ -216,6 +213,8 @@ TO1:
 		case protocol.HTTPSTransport:
 			scheme, port = "https://", "443"
 		default:
+			slog.Error("Error: Invalid transport protocol", "transport protocol", to2Addr.TransportProtocol)
+			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("invalid transport protocol: %s", to2Addr.TransportProtocol))
 			continue
 		}
 		if to2Addr.Port != 0 {
@@ -236,14 +235,7 @@ TO1:
 	}
 
 	if len(to2URLs) == 0 {
-		return nil, fmt.Errorf("no TO2 URLs found")
-	}
-
-	// Print TO2 addrs if RV-only
-	// TODO: why do we even have this?
-	if rvOnly {
-		fmt.Printf("TO1 Blob: %+v\n", to1d.Payload.Val)
-		return nil, nil
+		return nil, errors.Join(to2URLsErrors...)
 	}
 
 	// Try TO2 on each address only once
