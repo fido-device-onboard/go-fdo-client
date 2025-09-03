@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -122,7 +121,7 @@ func doOnboard() error {
 	if !ok {
 		return fmt.Errorf("invalid key exchange cipher suite: %s", cipherSuite)
 	}
-	newDC, err := transferOwnership(clientContext, dc.RvInfo, fdo.TO2Config{
+	newDC := transferOwnership(clientContext, dc.RvInfo, fdo.TO2Config{
 		Cred:       *dc,
 		HmacSha256: hmacSha256,
 		HmacSha384: hmacSha384,
@@ -139,11 +138,8 @@ func doOnboard() error {
 		CipherSuite:          kexCipherSuiteID,
 		AllowCredentialReuse: true,
 	})
-	if err != nil {
-		return err
-	}
 	if newDC == nil {
-		fmt.Println("Credential not updated (Credential Reuse Protocol")
+		fmt.Println("Credential not updated")
 		return nil
 	}
 
@@ -152,107 +148,117 @@ func doOnboard() error {
 	return updateCred(*newDC, FDO_STATE_IDLE)
 }
 
-func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) (*fdo.DeviceCredential, error) { //nolint:gocyclo
-	var to2URLs []string
-	directives := protocol.ParseDeviceRvInfo(rvInfo)
-	for _, directive := range directives {
-		if !directive.Bypass {
-			continue
-		}
-		for _, url := range directive.URLs {
-			to2URLs = append(to2URLs, url.String())
-		}
-	}
-
-	// Try TO1 on each address only once
+func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) *fdo.DeviceCredential { //nolint:gocyclo
 	var (
-		to1d     *cose.Sign1[protocol.To1d, []byte]
-		to1dErrs []error
+		directives          = protocol.ParseDeviceRvInfo(rvInfo)
+		onboardingPerformed bool
+		rvEntryDelay        time.Duration
+		newDC               *fdo.DeviceCredential
 	)
-TO1:
-	for _, directive := range directives {
-		if directive.Bypass {
-			continue
-		}
+	for {
+		for _, directive := range directives {
+			rvEntryDelay = directive.Delay
 
-		for _, url := range directive.URLs {
-			var err error
-			to1d, err = fdo.TO1(context.TODO(), tls.TlsTransport(url.String(), nil, insecureTLS), conf.Cred, conf.Key, nil)
-			if err != nil {
-				slog.Error("TO1 failed", "base URL", url.String(), "error", err)
-				to1dErrs = append(to1dErrs, err)
+			var to1d *cose.Sign1[protocol.To1d, []byte]
+			var to2URLs []string
+			if !directive.Bypass {
+				for _, url := range directive.URLs {
+					var err error
+					to1d, err = fdo.TO1(context.TODO(), tls.TlsTransport(url.String(), nil, insecureTLS), conf.Cred, conf.Key, nil)
+					if err != nil {
+						slog.Error("TO1 failed", "base URL", url.String(), "error", err)
+						continue
+					}
+					break
+				}
+				if to1d == nil {
+					slog.Error("Error: TO1 failed")
+					if directive.Delay != 0 {
+						// A 25% plus or minus jitter is allowed by spec
+						select {
+						case <-ctx.Done():
+							slog.Error("Context done", "error", ctx.Err())
+							return nil
+						case <-time.After(rvEntryDelay):
+						}
+					}
+					continue
+				}
+				for _, to2Addr := range to1d.Payload.Val.RV {
+					if to2Addr.DNSAddress == nil && to2Addr.IPAddress == nil {
+						slog.Error("Error: Both IP and DNS can't be null")
+						continue
+					}
+
+					var scheme, port string
+					switch to2Addr.TransportProtocol {
+					case protocol.HTTPTransport:
+						scheme, port = "http://", "80"
+					case protocol.HTTPSTransport:
+						scheme, port = "https://", "443"
+					default:
+						slog.Error("Error: Invalid transport protocol", "transport protocol", to2Addr.TransportProtocol)
+						continue
+					}
+					if to2Addr.Port != 0 {
+						port = strconv.Itoa(int(to2Addr.Port))
+					}
+
+					// Check and add DNS address if valid and resolvable
+					if to2Addr.DNSAddress != nil && isResolvableDNS(*to2Addr.DNSAddress) {
+						host := *to2Addr.DNSAddress
+						to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
+					}
+
+					// Check and add IP address if valid
+					if to2Addr.IPAddress != nil && isValidIP(to2Addr.IPAddress.String()) {
+						host := to2Addr.IPAddress.String()
+						to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
+					}
+				}
+			} else {
+				for _, url := range directive.URLs {
+					to2URLs = append(to2URLs, url.String())
+				}
+			}
+
+			if len(to2URLs) == 0 {
+				slog.Error("Error: No valid TO2 URLs found")
 				continue
 			}
-			break TO1
-		}
 
-		if directive.Delay != 0 {
-			// A 25% plus or minus jitter is allowed by spec
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(directive.Delay):
+			// Try TO2 on each address only once
+			for _, baseURL := range to2URLs {
+				var err error
+				newDC, err = transferOwnership2(tls.TlsTransport(baseURL, nil, insecureTLS), to1d, conf)
+				if newDC != nil {
+					onboardingPerformed = true
+					break
+				}
+				slog.Error("Error: TO2 failed", "base URL", baseURL, "error", err)
+				continue
+			}
+
+			if onboardingPerformed {
+				break
+			}
+		}
+		if onboardingPerformed {
+			break
+		} else {
+			if rvEntryDelay != 0 {
+				// A 25% plus or minus jitter is allowed by spec
+				select {
+				case <-ctx.Done():
+					slog.Error("Context done", "error", ctx.Err())
+					return nil
+				case <-time.After(rvEntryDelay):
+				}
 			}
 		}
 	}
-	if to1d == nil {
-		return nil, errors.Join(to1dErrs...)
-	}
-	var to2URLsErrors []error
-	for _, to2Addr := range to1d.Payload.Val.RV {
-		if to2Addr.DNSAddress == nil && to2Addr.IPAddress == nil {
-			slog.Error("Error: Both IP and DNS can't be null")
-			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("both IP and DNS can't be null"))
-			continue
-		}
 
-		var scheme, port string
-		switch to2Addr.TransportProtocol {
-		case protocol.HTTPTransport:
-			scheme, port = "http://", "80"
-		case protocol.HTTPSTransport:
-			scheme, port = "https://", "443"
-		default:
-			slog.Error("Error: Invalid transport protocol", "transport protocol", to2Addr.TransportProtocol)
-			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("invalid transport protocol: %s", to2Addr.TransportProtocol))
-			continue
-		}
-		if to2Addr.Port != 0 {
-			port = strconv.Itoa(int(to2Addr.Port))
-		}
-
-		// Check and add DNS address if valid and resolvable
-		if to2Addr.DNSAddress != nil && isResolvableDNS(*to2Addr.DNSAddress) {
-			host := *to2Addr.DNSAddress
-			to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
-		}
-
-		// Check and add IP address if valid
-		if to2Addr.IPAddress != nil && isValidIP(to2Addr.IPAddress.String()) {
-			host := to2Addr.IPAddress.String()
-			to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
-		}
-	}
-
-	if len(to2URLs) == 0 {
-		return nil, errors.Join(to2URLsErrors...)
-	}
-
-	// Try TO2 on each address only once
-	var (
-		errs  []error
-		newDC *fdo.DeviceCredential
-	)
-	for _, baseURL := range to2URLs {
-		var err error
-		newDC, err = transferOwnership2(tls.TlsTransport(baseURL, nil, insecureTLS), to1d, conf)
-		if newDC != nil {
-			return newDC, nil
-		}
-		errs = append(errs, err)
-	}
-
-	return nil, errors.Join(errs...)
+	return newDC
 }
 
 func transferOwnership2(transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
