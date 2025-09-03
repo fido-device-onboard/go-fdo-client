@@ -156,9 +156,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 		newDC               *fdo.DeviceCredential
 	)
 	for {
-		for _, directive := range directives {
-			rvEntryDelay = directive.Delay
-
+		for i, directive := range directives {
 			var to1d *cose.Sign1[protocol.To1d, []byte]
 			var to2URLs []string
 			if !directive.Bypass {
@@ -179,7 +177,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 						case <-ctx.Done():
 							slog.Error("Context done", "error", ctx.Err())
 							return nil
-						case <-time.After(rvEntryDelay):
+						case <-time.After(directive.Delay):
 						}
 					}
 					continue
@@ -236,11 +234,24 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 					break
 				}
 				slog.Error("Error: TO2 failed", "base URL", baseURL, "error", err)
+				if directive.Delay != 0 {
+					// A 25% plus or minus jitter is allowed by spec
+					select {
+					case <-ctx.Done():
+						slog.Error("Context done", "error", ctx.Err())
+						return nil
+					case <-time.After(rvEntryDelay):
+					}
+				}
 				continue
 			}
-
 			if onboardingPerformed {
 				break
+			}
+			// TODO: if this is the last instruction, set rvEntryDelay to whatever is the last delay, and use it below outside the main for loop
+			// if it's not set in the last instruction, then use 120s as per the spec
+			if i == len(directives)-1 {
+				rvEntryDelay = directive.Delay
 			}
 		}
 		if onboardingPerformed {
