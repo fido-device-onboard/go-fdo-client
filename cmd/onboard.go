@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
@@ -80,7 +81,7 @@ var onboardCmd = &cobra.Command{
 		if deviceStatus == FDO_STATE_PRE_TO1 || (deviceStatus == FDO_STATE_IDLE && resale) {
 			return doOnboard()
 		} else if deviceStatus == FDO_STATE_IDLE {
-			fmt.Println("FDO in Idle State. Device Onboarding already completed")
+			slog.Info("FDO in Idle State. Device Onboarding already completed")
 		} else if deviceStatus == FDO_STATE_PRE_DI {
 			return fmt.Errorf("device has not been properly initialized: run device-init first")
 		} else {
@@ -153,69 +154,78 @@ func doOnboard() error {
 		AllowCredentialReuse: true,
 	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			slog.Info("Onboarding canceled by user")
+		}
 		return err
 	}
 	if newDC == nil {
-		fmt.Println("Credential not updated (Credential Reuse Protocol")
+		slog.Info("Credential not updated (Credential Reuse Protocol)")
 		return nil
 	}
 
 	// Store new credential
-	fmt.Println("FIDO Device Onboard Complete")
+	slog.Info("FIDO Device Onboard Complete")
 	return updateCred(*newDC, FDO_STATE_IDLE)
 }
 
-func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) (*fdo.DeviceCredential, error) { //nolint:gocyclo
-	var to2URLs []string
-	directives := protocol.ParseDeviceRvInfo(rvInfo)
-	for _, directive := range directives {
-		if !directive.Bypass {
-			continue
-		}
+// addJitter adds ±25% randomization to a delay duration as per FDO spec v1.1 section 3.7.
+func addJitter(delay time.Duration) time.Duration {
+	jitterPercent := 0.25 * (2*rand.Float64() - 1) // Random from -0.25 to +0.25 (±25%)
+	jitter := float64(delay) * jitterPercent
+	return delay + time.Duration(jitter)
+}
+
+// applyDelay waits for the specified duration with context cancellation support.
+func applyDelay(ctx context.Context, delay time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
+	}
+}
+
+// getOwnerURLs performs TO1 protocol to discover Owner URLs or uses RV bypass.
+// Returns: owner URLs, TO1 response (needed for TO2)
+func getOwnerURLs(ctx context.Context, directive *protocol.RvDirective, conf fdo.TO2Config) ([]string, *cose.Sign1[protocol.To1d, []byte]) {
+	var to1d *cose.Sign1[protocol.To1d, []byte]
+	var ownerURLs []string
+
+	// RV bypass: Use Owner URLs directly from directive, skipping TO1
+	if directive.Bypass {
+		slog.Info("RV bypass enabled, skipping TO1 protocol")
 		for _, url := range directive.URLs {
-			to2URLs = append(to2URLs, url.String())
+			ownerURLs = append(ownerURLs, url.String())
+			slog.Info("Using Owner URL from bypass directive", "url", url.String())
 		}
+		return ownerURLs, nil
 	}
 
-	// Try TO1 on each address only once
-	var (
-		to1d     *cose.Sign1[protocol.To1d, []byte]
-		to1dErrs []error
-	)
-TO1:
-	for _, directive := range directives {
-		if directive.Bypass {
+	// Normal flow: Contact Rendezvous server via TO1 to discover Owner address
+	slog.Info("Attempting TO1 protocol")
+	for _, url := range directive.URLs {
+		var err error
+		to1d, err = fdo.TO1(ctx, tls.TlsTransport(url.String(), nil, insecureTLS), conf.Cred, conf.Key, nil)
+		if err != nil {
+			slog.Error("TO1 failed", "base URL", url.String(), "error", err)
 			continue
 		}
-
-		for _, url := range directive.URLs {
-			var err error
-			to1d, err = fdo.TO1(context.TODO(), tls.TlsTransport(url.String(), nil, insecureTLS), conf.Cred, conf.Key, nil)
-			if err != nil {
-				slog.Error("TO1 failed", "base URL", url.String(), "error", err)
-				to1dErrs = append(to1dErrs, err)
-				continue
-			}
-			break TO1
-		}
-
-		if directive.Delay != 0 {
-			// A 25% plus or minus jitter is allowed by spec
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(directive.Delay):
-			}
-		}
+		slog.Info("TO1 succeeded", "base URL", url.String())
+		break
 	}
+
+	// Check if all TO1 attempts failed
+	// Note: Empty URLs is valid (delay-only directive), individual failures already logged in loop
 	if to1d == nil {
-		return nil, errors.Join(to1dErrs...)
+		slog.Info("All TO1 attempts failed for this directive")
+		return nil, nil // Return empty URLs - will skip TO2
 	}
-	var to2URLsErrors []error
+
+	// TO1 succeeded - extract TO2 URLs from response
 	for _, to2Addr := range to1d.Payload.Val.RV {
 		if to2Addr.DNSAddress == nil && to2Addr.IPAddress == nil {
-			slog.Error("Error: Both IP and DNS can't be null")
-			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("both IP and DNS can't be null"))
+			slog.Error("Both IP and DNS can't be null")
 			continue
 		}
 
@@ -226,8 +236,7 @@ TO1:
 		case protocol.HTTPSTransport:
 			scheme, port = "https://", "443"
 		default:
-			slog.Error("Error: Invalid transport protocol", "transport protocol", to2Addr.TransportProtocol)
-			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("invalid transport protocol: %s", to2Addr.TransportProtocol))
+			slog.Error("Unsupported transport protocol", "transport protocol", to2Addr.TransportProtocol)
 			continue
 		}
 		if to2Addr.Port != 0 {
@@ -235,40 +244,97 @@ TO1:
 		}
 
 		// Check and add DNS address if valid and resolvable
-		if to2Addr.DNSAddress != nil && isResolvableDNS(*to2Addr.DNSAddress) {
-			host := *to2Addr.DNSAddress
-			to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
+		if to2Addr.DNSAddress != nil {
+			if isResolvableDNS(*to2Addr.DNSAddress) {
+				host := *to2Addr.DNSAddress
+				ownerURLs = append(ownerURLs, scheme+net.JoinHostPort(host, port))
+			} else {
+				slog.Warn("DNS address is not resolvable", "dns", *to2Addr.DNSAddress)
+			}
 		}
 
 		// Check and add IP address if valid
-		if to2Addr.IPAddress != nil && isValidIP(to2Addr.IPAddress.String()) {
-			host := to2Addr.IPAddress.String()
-			to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
+		if to2Addr.IPAddress != nil {
+			if isValidIP(to2Addr.IPAddress.String()) {
+				host := to2Addr.IPAddress.String()
+				ownerURLs = append(ownerURLs, scheme+net.JoinHostPort(host, port))
+			} else {
+				slog.Warn("IP address is not valid", "ip", to2Addr.IPAddress.String())
+			}
 		}
 	}
 
-	if len(to2URLs) == 0 {
-		return nil, errors.Join(to2URLsErrors...)
+	// Check if TO1 succeeded but returned no valid TO2 addresses
+	// This is unexpected but valid (manufacturer may have configured device oddly)
+	if len(ownerURLs) == 0 {
+		slog.Info("TO1 succeeded but no valid TO2 addresses found")
 	}
 
-	// Try TO2 on each address only once
-	var (
-		errs  []error
-		newDC *fdo.DeviceCredential
-	)
-	for _, baseURL := range to2URLs {
-		var err error
-		newDC, err = transferOwnership2(tls.TlsTransport(baseURL, nil, insecureTLS), to1d, conf)
-		if newDC != nil {
-			return newDC, nil
-		}
-		errs = append(errs, err)
-	}
-
-	return nil, errors.Join(errs...)
+	return ownerURLs, to1d
 }
 
-func transferOwnership2(transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
+func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) (*fdo.DeviceCredential, error) { //nolint:gocyclo
+	directives := protocol.ParseDeviceRvInfo(rvInfo)
+
+	if len(directives) == 0 {
+		return nil, errors.New("no rendezvous information found that's usable for the device")
+	}
+
+	// Infinite retry loop - continues until onboarding succeeds or context canceled
+	for {
+		for i, directive := range directives {
+			isLastDirective := (i == len(directives)-1)
+
+			// Step 1: Get Owner URLs (via TO1 or RV bypass)
+			ownerURLs, to1d := getOwnerURLs(ctx, &directive, conf)
+
+			// Step 2: Attempt TO2 with each Owner URL
+			// Note: If TO1 failed, ownerURLs is empty and loop is skipped
+			if len(ownerURLs) > 0 {
+				slog.Info("Attempting TO2 protocol")
+			}
+			for j, baseURL := range ownerURLs {
+				isLastURL := (j == len(ownerURLs)-1)
+				newDC, err := transferOwnership2(ctx, tls.TlsTransport(baseURL, nil, insecureTLS), to1d, conf)
+				if newDC != nil {
+					slog.Info("TO2 succeeded", "base URL", baseURL)
+					return newDC, nil
+				}
+				slog.Error("TO2 failed", "base URL", baseURL, "error", err)
+
+				// Apply ~120s delay after TO2 failure (last URL skips to Step 3)
+				if !isLastURL {
+					delay := addJitter(120 * time.Second)
+					slog.Info("Applying delay after TO2 failure", "delay", delay)
+					if err := applyDelay(ctx, delay); err != nil {
+						return nil, err
+					}
+				}
+			}
+
+			// Step 3: Apply delay after directive attempts (TO1 failed or all TO2 URLs failed)
+			// IMPORTANT: Delay applies even with zero URLs (allows RVDelaySec-only directives)
+			if directive.Delay != 0 {
+				// Use configured delay from directive
+				delay := addJitter(directive.Delay)
+				slog.Info("Applying directive delay", "delay", delay)
+				if err := applyDelay(ctx, delay); err != nil {
+					return nil, err
+				}
+			} else if isLastDirective {
+				// Last directive with no configured delay - apply default
+				delay := addJitter(120 * time.Second)
+				slog.Info("Applying default delay for last directive", "delay", delay)
+				if err := applyDelay(ctx, delay); err != nil {
+					return nil, err
+				}
+			}
+			// Non-last directive with no delay - continue to next directive
+		}
+	}
+}
+
+func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
 	fsims := map[string]serviceinfo.DeviceModule{
 		"fido_alliance": &fsim.Interop{},
 	}
@@ -328,7 +394,7 @@ func transferOwnership2(transport fdo.Transport, to1d *cose.Sign1[protocol.To1d,
 	}
 	conf.DeviceModules = fsims
 
-	return fdo.TO2(context.TODO(), transport, to1d, conf)
+	return fdo.TO2(ctx, transport, to1d, conf)
 }
 
 // Function to validate if a string is a valid IP address

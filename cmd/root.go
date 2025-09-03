@@ -33,7 +33,8 @@ var rootCmd = &cobra.Command{
 // Called by main to parse the command line and execute the subcommand
 func Execute() error {
 	// Catch interrupts
-	clientContext, cancel := context.WithCancel(context.Background())
+	var cancel context.CancelFunc
+	clientContext, cancel = context.WithCancel(context.Background())
 	defer cancel()
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt)
