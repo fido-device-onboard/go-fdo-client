@@ -1,0 +1,77 @@
+files_to_sync:
+  - .packit.yaml
+  - src: build/package/rpm/go-fdo-client.spec
+    dest: go-fdo-client.spec
+  - src: build/package/rpm/go-vendor-tools.toml
+    dest: go-vendor-tools.toml
+
+upstream_package_name: go-fdo-client
+downstream_package_name: go-fdo-client
+
+upstream_tag_template: v{version}
+copy_upstream_release_description: true
+
+srpm_build_deps:
+  - make
+  - git
+  - golang
+  - go-vendor-tools
+  - gzip
+  - tar
+
+packages:
+  go-fdo-client-fedora:
+    downstream_package_name: go-fdo-client
+    upstream_package_name: go-fdo-client
+    specfile_path: build/package/rpm/go-fdo-client.spec
+  go-fdo-client-centos:
+    downstream_package_name: go-fdo-client
+    upstream_package_name: go-fdo-client
+    specfile_path: build/package/rpm/go-fdo-client.spec
+    pkg_tool: centpkg
+
+actions:
+  pre-sync:
+    - make vendor-tarball VERSION=${PACKIT_PROJECT_VERSION}
+  create-archive:
+    - make packit-create-archive VERSION=${PACKIT_PROJECT_VERSION}
+
+jobs:
+  - &copr_fedora
+    job: copr_build
+    packages: [go-fdo-client-fedora]
+    trigger: pull_request
+    targets:
+      - fedora-stable
+      - fedora-development
+
+  - <<: *copr_fedora
+    trigger: commit
+    branch: main
+    owner: "@fedora-iot"
+    project: fedora-iot
+
+  - job: sync_from_downstream
+    trigger: commit
+
+  - job: propose_downstream
+    trigger: release
+    packages: [go-fdo-client-fedora]
+    dist_git_branches:
+      - fedora-stable
+      - fedora-development
+
+  - &copr_centos
+    job: copr_build
+    packages: [go-fdo-client-centos]
+    trigger: pull_request
+    targets:
+      - epel-9
+      - epel-10
+
+  - <<: *copr_centos
+    trigger: commit
+    branch: main
+    owner: "@fedora-iot"
+    project: fedora-iot
+
