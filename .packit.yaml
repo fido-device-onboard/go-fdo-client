@@ -1,9 +1,10 @@
 files_to_sync:
-  - .packit.yaml
-  - src: build/package/rpm/go-fdo-client.spec
-    dest: go-fdo-client.spec
-  - src: build/package/rpm/go-vendor-tools.toml
-    dest: go-vendor-tools.toml
+  - src:
+      - ".packit.yaml"
+      - "build/package/rpm/go-fdo-client.spec"
+      - "build/package/rpm/go-vendor-tools.toml"
+      - "build/package/rpm/go-fdo-client-*-vendor.tar.gz"
+    dest: .
 
 upstream_package_name: go-fdo-client
 downstream_package_name: go-fdo-client
@@ -18,6 +19,7 @@ srpm_build_deps:
   - go-vendor-tools
   - gzip
   - tar
+  - python3-tomlkit
 
 packages:
   go-fdo-client-fedora:
@@ -50,9 +52,6 @@ jobs:
     branch: main
     owner: "@fedora-iot"
     project: fedora-iot
-
-  - job: sync_from_downstream
-    trigger: commit
 
   - job: propose_downstream
     trigger: release

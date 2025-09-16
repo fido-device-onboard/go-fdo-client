@@ -10,7 +10,7 @@ GO_VENDOR_TOOLS_FILE    := $(SOURCEDIR)/go-vendor-tools.toml
 GO_VENDOR_TOOLS_FILE_NAME := go-vendor-tools.toml
 
 SOURCE_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION).tar.gz
-VENDOR_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION)-vendor.tar.bz2
+VENDOR_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
 
 # Build the Go project
 .PHONY: all build tidy fmt vet test
@@ -37,9 +37,10 @@ test:
 vendor-tarball: $(VENDOR_TARBALL)
 
 $(VENDOR_TARBALL):
-	mkdir -p "$(SOURCEDIR)"
-	GOTOOLCHAIN=local go_vendor_archive create --config "$(GO_VENDOR_TOOLS_FILE)" .
-	@mv -f vendor.tar.bz2 "$(VENDOR_TARBALL)"
+	rm -rf vendor; \
+	command -v go_vendor_archive || sudo dnf install -y go-vendor-tools python3-tomlkit; \
+	go_vendor_archive create --compression gz --config $(GO_VENDOR_TOOLS_FILE) --write-config --output $(VENDOR_TARBALL) .; \
+	rm -rf vendor;
 
 packit-create-archive: $(SOURCE_TARBALL) $(VENDOR_TARBALL)
 	@ls -1 "$(SOURCE_TARBALL)" | head -n1
@@ -78,14 +79,14 @@ RPMBUILD_BUILDROOT_DIR := $(RPMBUILD_TOP_DIR)/buildroot
 RPMBUILD_GOLANG_VENDOR_TOOLS_FILE := $(RPMBUILD_SOURCES_DIR)/$(GO_VENDOR_TOOLS_FILE_NAME)
 RPMBUILD_SPECFILE                 := $(RPMBUILD_SPECS_DIR)/$(PROJECT)-$(VERSION).spec
 RPMBUILD_TARBALL                  := $(RPMBUILD_SOURCES_DIR)/$(PROJECT)-$(VERSION).tar.gz
-RPMBUILD_VENDOR_TARBALL           := $(RPMBUILD_SOURCES_DIR)/$(PROJECT)-$(VERSION)-vendor.tar.bz2
+RPMBUILD_VENDOR_TARBALL           := $(RPMBUILD_SOURCES_DIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
 
 # Render a versioned spec into ./rpmbuild/specs (keeps source spec pristine)
 $(RPMBUILD_SPECFILE):
 	mkdir -p $(RPMBUILD_SPECS_DIR)
-	sed -e "s/^Version:.*/Version:        $(VERSION)/;" \
+	sed -e "s|^Version:.*|Version:        $(VERSION)|;" \
 	    -e "s|^Source0:.*|Source0:        $(PROJECT)-$(VERSION).tar.gz|;" \
-	    -e "s|^Source1:.*|Source1:        $(PROJECT)-$(VERSION)-vendor.tar.bz2|;" \
+	    -e "s|^Source1:.*|Source1:        $(PROJECT)-$(VERSION)-vendor.tar.gz|;" \
 	    $(SPEC_FILE) > $(RPMBUILD_SPECFILE)
 
 # Copy sources into ./rpmbuild/sources

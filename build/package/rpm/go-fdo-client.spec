@@ -20,7 +20,7 @@ Summary:        FIDO FDO compliant device on-boarding tool
 License:        Apache-2.0 AND BSD-3-Clause AND MIT
 URL:            %{gourl}
 Source0:        %{archivename}.tar.gz
-Source1:        %{archivename}-vendor.tar.bz2
+Source1:        %{archivename}-vendor.tar.gz
 Source2:        go-vendor-tools.toml
 
 BuildRequires:  go-vendor-tools
