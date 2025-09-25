@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 
-//go:build !linux
+//go:build !linux && !darwin
 
 package cmd
 
