@@ -1,9 +1,9 @@
 module github.com/fido-device-onboard/go-fdo-client
 
-go 1.23.0
+go 1.25.0
 
 require (
-	github.com/fido-device-onboard/go-fdo v0.0.0-20250601145551-2778c77d4779
+	github.com/fido-device-onboard/go-fdo v0.0.0-20250926190721-66d121649552
 	github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20250601145551-2778c77d4779
 	github.com/fido-device-onboard/go-fdo/tpm v0.0.0-20250601145551-2778c77d4779
 	github.com/google/go-tpm v0.9.5
