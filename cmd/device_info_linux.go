@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -37,4 +38,30 @@ func getMac(iface string) (string, error) {
 		return "", fmt.Errorf("mac address for %s is zero", iface)
 	}
 	return strings.TrimSpace(string(macForIface)), nil
+}
+
+func getOSVersion() (string, error) {
+	osInfoPath := "/etc/os-release"
+
+	osFile, err := os.ReadFile(osInfoPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot read file %w", err)
+	}
+
+	osInfo := make(map[string]string)
+	scanner := bufio.NewScanner(strings.NewReader(string(osFile)))
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if key, value, found := strings.Cut(line, "="); found {
+			osInfo[key] = strings.Trim(value, `"`)
+		}
+	}
+
+	if prettyName := osInfo["PRETTY_NAME"]; prettyName != "" {
+		return prettyName, nil
+	}
+
+	return "", fmt.Errorf("could not determine OS version from file %s", osInfoPath)
 }

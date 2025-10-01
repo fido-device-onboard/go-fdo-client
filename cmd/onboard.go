@@ -122,6 +122,13 @@ func doOnboard() error {
 	if !ok {
 		return fmt.Errorf("invalid key exchange cipher suite: %s", cipherSuite)
 	}
+
+	osVersion, err := getOSVersion()
+	if err != nil {
+		osVersion = "unknown"
+		slog.Warn("Setting serviceinfo.Devmod.Version", "error", err, "default", osVersion)
+	}
+
 	newDC, err := transferOwnership(clientContext, dc.RvInfo, fdo.TO2Config{
 		Cred:       *dc,
 		HmacSha256: hmacSha256,
@@ -130,7 +137,7 @@ func doOnboard() error {
 		Devmod: serviceinfo.Devmod{
 			Os:      runtime.GOOS,
 			Arch:    runtime.GOARCH,
-			Version: "Debian Bookworm",
+			Version: osVersion,
 			Device:  "go-validation",
 			FileSep: ";",
 			Bin:     runtime.GOARCH,
