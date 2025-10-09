@@ -1,0 +1,15 @@
+summary: Go FDO Client E2E Tests
+discover:
+    how: fmf
+execute:
+    how: tmt
+prepare:
+    - how: shell
+      script: |
+        dnf install -y 'dnf-command(copr)'
+        dnf copr enable -y @fedora-iot/fedora-iot
+        dnf install -y go-fdo-server go-fdo-server-manufacturer go-fdo-server-owner go-fdo-server-rendezvous sqlite
+provision:
+    how: virtual
+    memory: 4096
+    disk: 30

@@ -74,3 +74,13 @@ jobs:
     owner: "@fedora-iot"
     project: fedora-iot
 
+  - job: tests
+    trigger: pull_request
+    identifier: e2e-fedora
+    fmf_path: test/fmf
+    tmt_plan: plans/e2e
+    packages: [go-fdo-client-fedora]
+    targets:
+      - fedora-stable
+      - fedora-development
+
