@@ -84,3 +84,13 @@ jobs:
       - fedora-stable
       - fedora-development
 
+  - job: tests
+    trigger: pull_request
+    identifier: e2e-centos
+    fmf_path: test/fmf
+    tmt_plan: plans/e2e
+    packages: [go-fdo-client-centos]
+    targets:
+      - epel-9
+      - epel-10
+
