@@ -16,6 +16,7 @@ srpm_build_deps:
   - make
   - git
   - golang
+  - bison
   - go-vendor-tools
   - gzip
   - tar
@@ -33,6 +34,19 @@ packages:
     pkg_tool: centpkg
 
 actions:
+  post-upstream-clone:
+    - |
+      bash -c "
+      #! /bin/bash
+      set -x
+      go_version=$(go version | cut -f 3 -d ' ')
+      if [ "${go_version}" != "go1.25.0" ]; then
+        command -v gvm &>/dev/null || { curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/refs/tags/1.0.22/binscripts/gvm-installer -o /tmp/gvm-installer && bash /tmp/gvm-installer; }
+        source ${HOME}/.gvm/scripts/gvm
+        gvm install go1.25.0
+        gvm use go1.25.0 --default
+      fi
+      "
   pre-sync:
     - make vendor-tarball VERSION=${PACKIT_PROJECT_VERSION}
   create-archive:
@@ -44,8 +58,16 @@ jobs:
     packages: [go-fdo-client-fedora]
     trigger: pull_request
     targets:
-      - fedora-stable
-      - fedora-development
+      fedora-branched:
+        additional_repos:
+          - https://download.copr.fedorainfracloud.org/results/@go-sig/golang-rawhide/fedora-$releasever-$basearch/
+        additional_packages:
+          - golang
+      fedora-rawhide:
+        additional_repos:
+          - https://download.copr.fedorainfracloud.org/results/@go-sig/golang-rawhide/fedora-rawhide-$basearch/
+        additional_packages:
+          - golang
 
   - <<: *copr_fedora
     trigger: commit
@@ -65,8 +87,16 @@ jobs:
     packages: [go-fdo-client-centos]
     trigger: pull_request
     targets:
-      - epel-9
-      - epel-10
+      epel-9:
+        additional_repos:
+          - https://download.copr.fedorainfracloud.org/results/@go-sig/golang-rawhide/epel-9-$basearch/
+        additional_packages:
+          - golang
+      epel-10:
+        additional_repos:
+          - https://download.copr.fedorainfracloud.org/results/@go-sig/golang-rawhide/epel-10-$basearch/
+        additional_packages:
+          - golang
 
   - <<: *copr_centos
     trigger: commit
