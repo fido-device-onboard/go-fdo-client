@@ -39,7 +39,7 @@ BuildRequires: golang
 
 %build
 %global gomodulesmode GO111MODULE=on
-export LDFLAGS="-X %{goipath}/internal/version/version.VERSION=%{version}"
+export LDFLAGS="-X %{goipath}/internal/version.VERSION=%{version}"
 %gobuild -o %{gobuilddir}/bin/go-fdo-client %{goipath}
 
 %install

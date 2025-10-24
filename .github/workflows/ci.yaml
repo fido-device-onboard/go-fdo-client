@@ -50,8 +50,7 @@ jobs:
           source .github/scripts/fdo-utils.sh
           test_onboarding
 
-      - name: Get Manufacturer, Rendezvous and Owner server logs after a failed onboarding
-        if: failure() && steps.build-and-run-servers.outcome == 'success'
+      - name: Get Manufacturer, Rendezvous and Owner server logs
         run: |
           source .github/scripts/fdo-utils.sh
           get_server_logs
@@ -91,8 +90,7 @@ jobs:
           source .github/scripts/container-utils.sh
           test_onboarding
 
-      - name: Get Manufacturer, Rendezvous and Owner server logs after a failed onboarding
-        if: failure() && steps.build-and-run-servers.outcome == 'success'
+      - name: Get Manufacturer, Rendezvous and Owner server logs
         run: |
           source .github/scripts/container-utils.sh
           get_server_logs

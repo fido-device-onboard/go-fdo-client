@@ -13,7 +13,7 @@ services:
     command:
      - --db-type=sqlite
      - --db-dsn=file:/tmp/manufacturer.db
-     - --debug
+     - --log-level=debug
      - manufacturing
      - manufacturer:8038
      - --manufacturing-key=/tmp/certs/manufacturer.key
@@ -44,7 +44,7 @@ services:
     command:
       - --db-type=sqlite
       - --db-dsn=file:/tmp/rendezvous.db
-      - --debug
+      - --log-level=debug
       - rendezvous
       - rendezvous:8041
     networks:
@@ -69,7 +69,7 @@ services:
     command:
       - --db-type=sqlite
       - --db-dsn=file:/tmp/owner.db
-      - --debug
+      - --log-level=debug
       - owner
       - owner:8043
       - --owner-key=/tmp/certs/owner.key
