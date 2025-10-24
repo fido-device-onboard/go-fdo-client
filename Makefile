@@ -1,6 +1,5 @@
 COMMIT  := $(shell git rev-parse --short HEAD)
 DATE    := $(shell date "+%Y%m%d")
-VERSION := git$(DATE).$(COMMIT)
 PROJECT := go-fdo-client
 
 SOURCEDIR               := $(CURDIR)/build/package/rpm
@@ -8,6 +7,7 @@ SPEC_FILE_NAME          := $(PROJECT).spec
 SPEC_FILE               := $(SOURCEDIR)/$(SPEC_FILE_NAME)
 GO_VENDOR_TOOLS_FILE    := $(SOURCEDIR)/go-vendor-tools.toml
 GO_VENDOR_TOOLS_FILE_NAME := go-vendor-tools.toml
+VERSION ?= $(shell git describe --always --dirty --tags 2>/dev/null || echo "undefined")
 
 SOURCE_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION).tar.gz
 VENDOR_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
@@ -17,7 +17,7 @@ VENDOR_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
 all: build test
 
 build: tidy fmt vet
-	go build
+	go build -ldflags="-X github.com/fido-device-onboard/go-fdo-client/internal/version/version.VERSION=${VERSION}"
 
 tidy:
 	go mod tidy
@@ -32,7 +32,7 @@ test:
 	go test -v ./...
 
 # Packit helpers
-.PHONY: vendor-tarball packit-create-archive vendor-licenses
+.PHONY: vendor-tarball packit-create-archive vendor-licenses render-specfile
 
 vendor-tarball: $(VENDOR_TARBALL)
 
@@ -81,6 +81,7 @@ RPMBUILD_SPECFILE                 := $(RPMBUILD_SPECS_DIR)/$(PROJECT)-$(VERSION)
 RPMBUILD_TARBALL                  := $(RPMBUILD_SOURCES_DIR)/$(PROJECT)-$(VERSION).tar.gz
 RPMBUILD_VENDOR_TARBALL           := $(RPMBUILD_SOURCES_DIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
 
+render-specfile: $(RPMBUILD_SPECFILE)
 # Render a versioned spec into ./rpmbuild/specs (keeps source spec pristine)
 $(RPMBUILD_SPECFILE):
 	mkdir -p $(RPMBUILD_SPECS_DIR)
