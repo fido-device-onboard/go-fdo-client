@@ -8,8 +8,7 @@
 %global common_description %{expand:
 go-fdo-client is the device-side implementation of FIDO Device Onboard
 specification in Go. It provides an FDO client that interacts with
-FDO manufacturer, rendezvous, and owner servers to perform device
-on-boarding.}
+FDO manufacturer and owner servers to perform device on-boarding.}
 
 Name:           go-fdo-client
 Version:        0
@@ -40,6 +39,7 @@ BuildRequires: golang
 
 %build
 %global gomodulesmode GO111MODULE=on
+export LDFLAGS="-X %{goipath}/internal/version/version.VERSION=%{version}"
 %gobuild -o %{gobuilddir}/bin/go-fdo-client %{goipath}
 
 %install

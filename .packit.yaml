@@ -37,6 +37,8 @@ actions:
     - make vendor-tarball VERSION=${PACKIT_PROJECT_VERSION}
   create-archive:
     - make packit-create-archive VERSION=${PACKIT_PROJECT_VERSION}
+  fix-spec-file:
+    - bash -c "sed -i -r \"s/Version:(\s*)\S+/Version:\1${PACKIT_PROJECT_VERSION}%{?dist}/\" build/package/rpm/go-fdo-client.spec"
 
 jobs:
   - &copr_fedora
