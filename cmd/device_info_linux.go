@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	osInfoPath 		= "/etc/os-release"
+	osInfoPath      = "/etc/os-release"
 	productNamePath = "/sys/devices/virtual/dmi/id/product_name"
 )
 
