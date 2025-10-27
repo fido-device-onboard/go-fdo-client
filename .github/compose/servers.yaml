@@ -11,8 +11,8 @@ services:
     ports:
       - 8038:8038
     command:
-     - --db=/tmp/sqlite.db
-     - --db-pass='2=,%95QF<uTLLHt' \
+     - --db-type=sqlite
+     - --db-dsn=file:/tmp/manufacturer.db
      - --debug
      - manufacturing
      - manufacturer:8038
@@ -42,8 +42,8 @@ services:
     ports:
       - 8041:8041
     command:
-      - --db=/tmp/sqlite.db
-      - --db-pass='2=,%95QF<uTLLHt'
+      - --db-type=sqlite
+      - --db-dsn=file:/tmp/rendezvous.db
       - --debug
       - rendezvous
       - rendezvous:8041
@@ -67,8 +67,8 @@ services:
     ports:
       - 8043:8043
     command:
-      - --db=/tmp/sqlite.db
-      - --db-pass='2=,%95QF<uTLLHt'
+      - --db-type=sqlite
+      - --db-dsn=file:/tmp/owner.db
       - --debug
       - owner
       - owner:8043
