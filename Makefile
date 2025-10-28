@@ -17,7 +17,7 @@ VENDOR_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
 all: build test
 
 build: tidy fmt vet
-	go build
+	go build -ldflags="-X github.com/fido-device-onboard/go-fdo-client/internal/version/version.VERSION=${VERSION}"
 
 tidy:
 	go mod tidy
