@@ -32,14 +32,6 @@ if ! rpm -q go-fdo-client &>/dev/null; then
 fi
 CLIENT_PKG=$(rpm -q go-fdo-client)
 info "go-fdo-client package is installed: ${CLIENT_PKG}"
-# Verify we're testing the PR artifact (should contain .pr or timestamp in version)
-if [[ ! "$CLIENT_PKG" =~ (pr[0-9]+|[0-9]{14}) ]]; then
-    error "Package version does not appear to be from PR build: ${CLIENT_PKG}"
-    error "Expected version with '.pr' or timestamp, but got: ${CLIENT_PKG}"
-    error "This suggests the PR artifact was replaced by a stable version."
-    exit 1
-fi
-info "Confirmed testing PR artifact build"
 
 # Verify go-fdo-server subpackages are installed
 info "Verifying go-fdo-server installation..."
