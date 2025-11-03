@@ -168,6 +168,9 @@ func doOnboard() error {
 func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) (*fdo.DeviceCredential, error) { //nolint:gocyclo
 	var to2URLs []string
 	directives := protocol.ParseDeviceRvInfo(rvInfo)
+
+	// Collect TO2 URLs from RV bypass directives (RV bypass=true case)
+	// These URLs point directly to the Owner, skipping Rendezvous
 	for _, directive := range directives {
 		if !directive.Bypass {
 			continue
@@ -177,81 +180,94 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 		}
 	}
 
-	// Try TO1 on each address only once
+	// Attempt TO1 protocol with Rendezvous server (normal flow, not RV bypass)
+	// to1d contains the TO1 response if successful, or remain nil if:
+	// - TO1 failed (error case), OR
+	// - TO1 was skipped because RV bypass is true
 	var (
 		to1d     *cose.Sign1[protocol.To1d, []byte]
 		to1dErrs []error
 	)
 TO1:
 	for _, directive := range directives {
-		if directive.Bypass {
-			continue
-		}
-
-		for _, url := range directive.URLs {
-			var err error
-			to1d, err = fdo.TO1(context.TODO(), tls.TlsTransport(url.String(), nil, insecureTLS), conf.Cred, conf.Key, nil)
-			if err != nil {
-				slog.Error("TO1 failed", "base URL", url.String(), "error", err)
-				to1dErrs = append(to1dErrs, err)
-				continue
+		// Only perform TO1 if this is NOT a bypass directive
+		if !directive.Bypass {
+			for _, url := range directive.URLs {
+				var err error
+				to1d, err = fdo.TO1(context.TODO(), tls.TlsTransport(url.String(), nil, insecureTLS), conf.Cred, conf.Key, nil)
+				if err != nil {
+					slog.Error("TO1 failed", "base URL", url.String(), "error", err)
+					to1dErrs = append(to1dErrs, err)
+					continue
+				}
+				break TO1
 			}
-			break TO1
-		}
 
-		if directive.Delay != 0 {
-			// A 25% plus or minus jitter is allowed by spec
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(directive.Delay):
+			if directive.Delay != 0 {
+				// A 25% plus or minus jitter is allowed by spec
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(directive.Delay):
+				}
 			}
 		}
 	}
-	if to1d == nil {
+	// Error if we have no way to reach the Owner:
+	// - to1d == nil: No successful TO1 response received
+	// - len(to2URLs) == 0: No bypass URLs were collected either
+	if to1d == nil && len(to2URLs) == 0 {
 		return nil, errors.Join(to1dErrs...)
 	}
-	var to2URLsErrors []error
-	for _, to2Addr := range to1d.Payload.Val.RV {
-		if to2Addr.DNSAddress == nil && to2Addr.IPAddress == nil {
-			slog.Error("Error: Both IP and DNS can't be null")
-			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("both IP and DNS can't be null"))
-			continue
+
+	// If TO1 succeeded, extract Owner addresses from the TO1 response
+	// If using RV bypass (to1d == nil but to2URLs > 0), skip this - we already have Owner addresses
+	if to1d != nil {
+		var to2URLsErrors []error
+		for _, to2Addr := range to1d.Payload.Val.RV {
+			if to2Addr.DNSAddress == nil && to2Addr.IPAddress == nil {
+				slog.Error("Error: Both IP and DNS can't be null")
+				to2URLsErrors = append(to2URLsErrors, fmt.Errorf("both IP and DNS can't be null"))
+				continue
+			}
+
+			var scheme, port string
+			switch to2Addr.TransportProtocol {
+			case protocol.HTTPTransport:
+				scheme, port = "http://", "80"
+			case protocol.HTTPSTransport:
+				scheme, port = "https://", "443"
+			default:
+				slog.Error("Error: Invalid transport protocol", "transport protocol", to2Addr.TransportProtocol)
+				to2URLsErrors = append(to2URLsErrors, fmt.Errorf("invalid transport protocol: %s", to2Addr.TransportProtocol))
+				continue
+			}
+			if to2Addr.Port != 0 {
+				port = strconv.Itoa(int(to2Addr.Port))
+			}
+
+			// Check and add DNS address if valid and resolvable
+			if to2Addr.DNSAddress != nil && isResolvableDNS(*to2Addr.DNSAddress) {
+				host := *to2Addr.DNSAddress
+				to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
+			}
+
+			// Check and add IP address if valid
+			if to2Addr.IPAddress != nil && isValidIP(to2Addr.IPAddress.String()) {
+				host := to2Addr.IPAddress.String()
+				to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
+			}
 		}
 
-		var scheme, port string
-		switch to2Addr.TransportProtocol {
-		case protocol.HTTPTransport:
-			scheme, port = "http://", "80"
-		case protocol.HTTPSTransport:
-			scheme, port = "https://", "443"
-		default:
-			slog.Error("Error: Invalid transport protocol", "transport protocol", to2Addr.TransportProtocol)
-			to2URLsErrors = append(to2URLsErrors, fmt.Errorf("invalid transport protocol: %s", to2Addr.TransportProtocol))
-			continue
-		}
-		if to2Addr.Port != 0 {
-			port = strconv.Itoa(int(to2Addr.Port))
-		}
-
-		// Check and add DNS address if valid and resolvable
-		if to2Addr.DNSAddress != nil && isResolvableDNS(*to2Addr.DNSAddress) {
-			host := *to2Addr.DNSAddress
-			to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
-		}
-
-		// Check and add IP address if valid
-		if to2Addr.IPAddress != nil && isValidIP(to2Addr.IPAddress.String()) {
-			host := to2Addr.IPAddress.String()
-			to2URLs = append(to2URLs, scheme+net.JoinHostPort(host, port))
+		if len(to2URLs) == 0 {
+			return nil, errors.Join(to2URLsErrors...)
 		}
 	}
 
-	if len(to2URLs) == 0 {
-		return nil, errors.Join(to2URLsErrors...)
-	}
-
-	// Try TO2 on each address only once
+	// Attempt TO2 protocol with the Owner server on each collected URL
+	// to2URLs contains Owner addresses from either:
+	// - RV bypass directives (collected earlier, skipped TO1), OR
+	// - TO1 response from Rendezvous server (normal flow)
 	var (
 		errs  []error
 		newDC *fdo.DeviceCredential
