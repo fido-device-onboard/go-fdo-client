@@ -1,6 +1,7 @@
 summary: Go FDO Client E2E Tests
 discover:
     how: fmf
+    test: e2e-onboarding
 execute:
     how: tmt
 prepare:
