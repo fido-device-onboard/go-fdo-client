@@ -81,8 +81,9 @@ jobs:
     tmt_plan: plans/e2e
     packages: [go-fdo-client-fedora]
     targets:
-      - fedora-stable
-      - fedora-development
+      - fedora-latest-stable
+      - fedora-latest
+      - fedora-rawhide
 
   - job: tests
     trigger: pull_request
