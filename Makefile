@@ -6,8 +6,6 @@ PROJECT := go-fdo-client
 SOURCEDIR               := $(CURDIR)/build/package/rpm
 SPEC_FILE_NAME          := $(PROJECT).spec
 SPEC_FILE               := $(SOURCEDIR)/$(SPEC_FILE_NAME)
-GO_VENDOR_TOOLS_FILE    := $(SOURCEDIR)/go-vendor-tools.toml
-GO_VENDOR_TOOLS_FILE_NAME := go-vendor-tools.toml
 
 SOURCE_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION).tar.gz
 VENDOR_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
@@ -37,20 +35,19 @@ test:
 vendor-tarball: $(VENDOR_TARBALL)
 
 $(VENDOR_TARBALL):
+	@echo "Creating vendor tarball..."
 	rm -rf vendor; \
-	command -v go_vendor_archive || sudo dnf install -y go-vendor-tools python3-tomlkit; \
-	go_vendor_archive create --compression gz --config $(GO_VENDOR_TOOLS_FILE) --write-config --output $(VENDOR_TARBALL) .; \
-	rm -rf vendor;
+	go mod vendor; \
+	tar -czf $(VENDOR_TARBALL) vendor/; \
+	rm -rf vendor
 
 packit-create-archive: $(SOURCE_TARBALL) $(VENDOR_TARBALL)
-	@ls -1 "$(SOURCE_TARBALL)" | head -n1
+	ls -1 $(SOURCE_TARBALL) $(VENDOR_TARBALL)
 
 $(SOURCE_TARBALL):
+	@echo "Creating source tarball..."
 	mkdir -p "$(SOURCEDIR)"
-	git archive --format=tar --prefix="$(PROJECT)-$(VERSION)/" HEAD | gzip > "$(SOURCE_TARBALL)"
-
-vendor-licenses:
-	go_vendor_license --config "$(GO_VENDOR_TOOLS_FILE)" .
+	git archive --prefix=$(PROJECT)-$(VERSION)/ --format=tar.gz HEAD > $(SOURCE_TARBALL)
 
 #
 # Building packages
@@ -76,7 +73,6 @@ RPMBUILD_SOURCES_DIR   := $(RPMBUILD_TOP_DIR)/sources
 RPMBUILD_SRPMS_DIR     := $(RPMBUILD_TOP_DIR)/srpms
 RPMBUILD_BUILDROOT_DIR := $(RPMBUILD_TOP_DIR)/buildroot
 
-RPMBUILD_GOLANG_VENDOR_TOOLS_FILE := $(RPMBUILD_SOURCES_DIR)/$(GO_VENDOR_TOOLS_FILE_NAME)
 RPMBUILD_SPECFILE                 := $(RPMBUILD_SPECS_DIR)/$(PROJECT)-$(VERSION).spec
 RPMBUILD_TARBALL                  := $(RPMBUILD_SOURCES_DIR)/$(PROJECT)-$(VERSION).tar.gz
 RPMBUILD_VENDOR_TARBALL           := $(RPMBUILD_SOURCES_DIR)/$(PROJECT)-$(VERSION)-vendor.tar.gz
@@ -95,14 +91,9 @@ $(RPMBUILD_TARBALL): $(SOURCE_TARBALL) $(VENDOR_TARBALL)
 	cp -f $(SOURCE_TARBALL)  $(RPMBUILD_TARBALL)
 	cp -f $(VENDOR_TARBALL)  $(RPMBUILD_VENDOR_TARBALL)
 
-# Also copy the vendor tools TOML so macros can read it if needed
-$(RPMBUILD_GOLANG_VENDOR_TOOLS_FILE):
-	mkdir -p $(RPMBUILD_SOURCES_DIR)
-	cp -f $(GO_VENDOR_TOOLS_FILE) $(RPMBUILD_GOLANG_VENDOR_TOOLS_FILE)
-
 # Build SRPM locally (outputs under ./rpmbuild)
 .PHONY: srpm
-srpm: $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL) $(RPMBUILD_GOLANG_VENDOR_TOOLS_FILE)
+srpm: $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL)
 	command -v rpmbuild >/dev/null || { echo "rpmbuild missing"; exit 1; }
 	rpmbuild -bs \
 		--define "_topdir $(RPMBUILD_TOP_DIR)" \
@@ -116,7 +107,7 @@ srpm: $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL) $(RPMBUILD_GOLANG_VENDOR_TOOLS_FI
 
 # Build binary RPM locally (optional)
 .PHONY: rpm
-rpm: $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL) $(RPMBUILD_GOLANG_VENDOR_TOOLS_FILE)
+rpm: $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL)
 	command -v rpmbuild >/dev/null || { echo "rpmbuild missing"; exit 1; }
 	# Uncomment to auto-install build deps on your host:
 	# sudo dnf builddep -y $(RPMBUILD_SPECFILE)
@@ -129,3 +120,9 @@ rpm: $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL) $(RPMBUILD_GOLANG_VENDOR_TOOLS_FIL
 		--define "_builddir $(RPMBUILD_BUILD_DIR)" \
 		--define "_buildrootdir $(RPMBUILD_BUILDROOT_DIR)" \
 		$(RPMBUILD_SPECFILE)
+
+.PHONY: clean
+clean:
+	rm -rf $(RPMBUILD_TOP_DIR)
+	rm -rf $(SOURCEDIR)/$(PROJECT)-*.tar.gz
+	rm -rf vendor

@@ -6,3 +6,4 @@ go.work.sum
 go-fdo-client
 go-fdo-client-*.tar.gz
 rpmbuild
+vendor/
