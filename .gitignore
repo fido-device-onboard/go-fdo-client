@@ -4,5 +4,5 @@ go.work.sum
 *.db
 .vscode/*
 go-fdo-client
-go-fdo-client-*.tar.gz
+go-fdo-client-*.tar.*
 rpmbuild

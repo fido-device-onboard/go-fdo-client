@@ -172,6 +172,6 @@ test_onboarding () {
   get_ov_from_manufacturer ${manufacturer_service} "${guid}" ${owner_ov}
   set_owner_redirect_info ${owner_service} ${owner_ip} ${owner_port}
   send_ov_to_owner ${owner_service} ${owner_ov}
-  run_to0 ${owner_service} "${guid}"
+  sleep 20
   run_fido_device_onboard ${owner_onboard_log}
 }
