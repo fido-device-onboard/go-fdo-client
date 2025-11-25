@@ -7,9 +7,7 @@ merge_pr_in_ci: false
 
 files_to_sync:
   - src:
-      - ".packit.yaml"
       - "build/package/rpm/go-fdo-client.spec"
-      - "build/package/rpm/go-vendor-tools.toml"
       - "build/package/rpm/go-fdo-client-*-vendor.tar.bz2"
     dest: .
 
@@ -39,14 +37,6 @@ packages:
     pkg_tool: centpkg
 
 actions:
-  post-upstream-clone:
-    - |
-      bash -xc '
-      #! /bin/bash
-      export SPEC_FILE="${PACKIT_UPSTREAM_REPO}/build/package/rpm/go-fdo-client.spec"
-      export COMMIT="$(GIT_DIR="${PACKIT_UPSTREAM_REPO}"/.git git rev-parse HEAD)"
-      sed -i "s/^%global commit\(\s*\).*/%global commit\1${COMMIT}/" ${SPEC_FILE}
-      '
   post-modifications:
     # https://fedora.gitlab.io/sigs/go/go-vendor-tools/scenarios/#manual-update
     - |
@@ -67,7 +57,6 @@ actions:
       '
 
 jobs:
-
   # Fedora jobs
 
   # We build and test Fedora 43 ('latest-stable'), Fedora 44 ('latest' when branched) and Fedora Rawhide
