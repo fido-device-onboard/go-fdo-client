@@ -1,18 +1,13 @@
+#! /usr/bin/make -f
+
 PROJECT                   := go-fdo-client
-RPM_BASE_DIR              := $(CURDIR)/build/package/rpm
-SPEC_FILE_NAME            := $(PROJECT).spec
-SPEC_FILE                 := $(RPM_BASE_DIR)/$(SPEC_FILE_NAME)
-COMMIT_SHORT              := $(shell git rev-parse --short HEAD)
-VERSION                   := $(shell bash -c "set -o pipefail; git describe --tags | sed -e 's/^v//' -e 's/-.*//'")
-ifeq ($(VERSION),)
-VERSION                   := $(shell grep 'Version:' $(SPEC_FILE) | awk '{printf "%s", $$2}')
-endif
-
 ARCH                      := $(shell uname -m)
-
 SOURCEDIR                 := $(CURDIR)/build/package/rpm
 SPEC_FILE_NAME            := $(PROJECT).spec
 SPEC_FILE                 := $(SOURCEDIR)/$(SPEC_FILE_NAME)
+COMMIT_SHORT              := $(shell git rev-parse --short HEAD)
+VERSION                   := $(shell grep 'Version:' $(SPEC_FILE) | awk '{printf "%s", $$2}').git$(COMMIT_SHORT)
+
 GO_VENDOR_TOOLS_FILE_NAME := go-vendor-tools.toml
 GO_VENDOR_TOOLS_FILE      := $(SOURCEDIR)/$(GO_VENDOR_TOOLS_FILE_NAME)
 
@@ -120,6 +115,11 @@ $(RPMBUILD_SRPM_FILE): $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL) $(RPMBUILD_GOLAN
 		--define "_buildrootdir $(RPMBUILD_BUILDROOT_DIR)" \
 		$(RPMBUILD_SPECFILE)
 
+# Build SRPM locally (outputs under ./rpmbuild)
+.PHONY: srpm
+srpm: $(RPMBUILD_SRPM_FILE)
+
+
 $(RPMBUILD_RPM_FILE): $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL) $(RPMBUILD_GOLANG_VENDOR_TOOLS_FILE)
 	command -v rpmbuild >/dev/null || { echo "rpmbuild missing"; exit 1; }
 	# Uncomment to auto-install build deps on your host:
@@ -133,10 +133,6 @@ $(RPMBUILD_RPM_FILE): $(RPMBUILD_SPECFILE) $(RPMBUILD_TARBALL) $(RPMBUILD_GOLANG
 		--define "_builddir $(RPMBUILD_BUILD_DIR)" \
 		--define "_buildrootdir $(RPMBUILD_BUILDROOT_DIR)" \
 		$(RPMBUILD_SPECFILE)
-
-# Build SRPM locally (outputs under ./rpmbuild)
-.PHONY: srpm
-srpm: $(RPMBUILD_SRPM_FILE)
 
 # Build binary RPM locally (optional)
 .PHONY: rpm
