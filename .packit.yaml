@@ -47,13 +47,16 @@ actions:
       export GO_VENDOR_TOOLS_CONFIG=${BASE_DIR}/go-vendor-tools.toml
       export SPEC_FILE=${BASE_DIR}/go-fdo-client.spec
       # Download the source tarball (Source0) needed by go_vendor_archive
-      spectool -g -C ${BASE_DIR} ${SPEC_FILE} || exit 1
+      spectool -g -C ${BASE_DIR} ${SPEC_FILE}
       go_vendor_archive create --config ${GO_VENDOR_TOOLS_CONFIG} ${SPEC_FILE}
       go_vendor_license \
         --config ${GO_VENDOR_TOOLS_CONFIG} \
         --path ${SPEC_FILE} \
         report \
         --verify-spec
+      if [ -n "${PACKIT_DOWNSTREAM_REPO}" ]; then
+        cp "${BASE_DIR}/go-fdo-server-${PACKIT_PROJECT_VERSION}-vendor.tar.bz2" "${PACKIT_DOWNSTREAM_REPO}"
+      fi
       '
 
 jobs:
@@ -88,7 +91,7 @@ jobs:
      - "fedora-eln-x86_64"
      - "fedora-eln-aarch64"
 
- # Only Fedora >= 43 have golang >= 1.25.0
+  # Only Fedora >= 43 have golang >= 1.25.0
   - job: propose_downstream
     trigger: release
     packages: [go-fdo-client-fedora]
@@ -132,6 +135,7 @@ jobs:
       - "centos-stream-10-x86_64"
       - "centos-stream-10-aarch64"
 
+  # Build also for epel-9 and epel-10 in '@fedora-iot/fedora-iot' copr
   - <<: *copr_centos
     trigger: commit
     branch: main
