@@ -55,7 +55,7 @@ actions:
         report \
         --verify-spec
       if [ -n "${PACKIT_DOWNSTREAM_REPO}" ]; then
-        cp "${BASE_DIR}/go-fdo-server-${PACKIT_PROJECT_VERSION}-vendor.tar.bz2" "${PACKIT_DOWNSTREAM_REPO}"
+        cp "${BASE_DIR}/go-fdo-client-${PACKIT_PROJECT_VERSION}-vendor.tar.bz2" "${PACKIT_DOWNSTREAM_REPO}"
       fi
       '
 
