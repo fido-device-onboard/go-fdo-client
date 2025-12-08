@@ -7,9 +7,12 @@ merge_pr_in_ci: false
 
 files_to_sync:
   - src:
+      - ".packit.yaml"
       - "build/package/rpm/go-fdo-client.spec"
       - "build/package/rpm/go-fdo-client-*-vendor.tar.bz2"
     dest: .
+
+issue_repository: https://github.com/fido-device-onboard/go-fdo-client
 
 upstream_package_name: go-fdo-client
 downstream_package_name: go-fdo-client
@@ -102,7 +105,6 @@ jobs:
 
   - job: koji_build
     trigger: commit
-    allowed_pr_authors: [all_committers]
     dist_git_branches: &fedora_dist_git_branches
       - "fedora-latest-stable"
       - "fedora-latest"
@@ -110,7 +112,6 @@ jobs:
 
   - job: bodhi_update
     trigger: commit
-    allowed_builders: [all_committers]
     dist_git_branches: *fedora_dist_git_branches
 
   # Fedora E2E Testing jobs
