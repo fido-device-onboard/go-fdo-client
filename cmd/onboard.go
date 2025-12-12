@@ -33,13 +33,14 @@ import (
 type fsVar map[string]string
 
 var (
-	cipherSuite string
-	dlDir       string
-	echoCmds    bool
-	kexSuite    string
-	resale      bool
-	uploads     = make(fsVar)
-	wgetDir     string
+	cipherSuite   string
+	dlDir         string
+	echoCmds      bool
+	kexSuite      string
+	resale        bool
+	to2RetryDelay time.Duration
+	uploads       = make(fsVar)
+	wgetDir       string
 )
 var validCipherSuites = []string{
 	"A128GCM", "A192GCM", "A256GCM",
@@ -101,6 +102,7 @@ func init() {
 	onboardCmd.Flags().StringVar(&kexSuite, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
 	onboardCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
 	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
+	onboardCmd.Flags().DurationVar(&to2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
 	onboardCmd.Flags().Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
 	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "A dir to wget files into (FSIM disabled if empty)")
 
@@ -302,11 +304,11 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 				}
 				slog.Error("TO2 failed", "base URL", baseURL, "error", err)
 
-				// Apply ~120s delay after TO2 failure (last URL skips to Step 3)
-				if !isLastURL {
-					delay := addJitter(120 * time.Second)
-					slog.Info("Applying delay after TO2 failure", "delay", delay)
-					if err := applyDelay(ctx, delay); err != nil {
+				// Apply configurable delay between Owner URLs within a directive
+				// (not spec-compliant, but prevents hammering the same server via different URLs)
+				if !isLastURL && to2RetryDelay > 0 {
+					slog.Info("Applying TO2 retry delay", "delay", to2RetryDelay)
+					if err := applyDelay(ctx, to2RetryDelay); err != nil {
 						return nil, err
 					}
 				}
