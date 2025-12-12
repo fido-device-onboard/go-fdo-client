@@ -80,6 +80,7 @@ Flags:
       --key string        Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]
       --resale            Perform resale
       --rv-only           Perform TO1 then stop
+      --to2-retry-delay duration   Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)
       --upload fsVar      List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty) (default [])
       --wget-dir string   A dir to wget files into (FSIM disabled if empty)
 
@@ -114,6 +115,15 @@ Key exchange suites:
   - ECDH256
   - ECDH384
 ```
+
+## Onboarding Retry Behavior
+
+The `onboard` command implements an infinite retry loop that continues attempting TO1 and TO2 protocols until successful or manually interrupted:
+
+- **RV Bypass**: When an RV directive has `rv_bypass` enabled, the client skips TO1 and attempts TO2 directly to the Owner. The RV instruction must include the owner server's IP/DNS address, protocol, and device_port to successfully connect for TO2 and complete onboarding
+- **Directive Iteration**: Client processes all RV directives sequentially. If one fails, it continues to the next directive
+- **Delays**: Applies delays between retry attempts as specified in RV directives (with ±25% jitter per FDO spec)
+- **TO2 Retry Delay**: Use `--to2-retry-delay` to add delay between multiple Owner URLs from the same directive (default: 0, disabled)
 
 ## Running the FDO Client using a Credential File Blob
 ### Remove Credential File
