@@ -1,0 +1,29 @@
+summary: Comprehensive retry loop behavior test
+description: |
+    Tests all retry loop behaviors in go-fdo-client:
+
+    Scenario 1: RV Bypass + TO1 Coexistence + Default TO2 Retry
+    - Tests RV bypass with multiple unreachable owner URLs
+    - Validates default TO2 retry delay (0s = no delay)
+    - Confirms fallback to normal TO1 when bypass fails
+    - Verifies directive delay (configured delay with ±25% jitter)
+
+    Scenario 2: Configured vs Default Delay + User Interruption
+    - Tests configured directive delay (5s ± 25% jitter)
+    - Tests FDO spec default 120s delay (±30s) for last directive
+    - Validates graceful SIGINT (Ctrl+C) handling
+    - Confirms "Onboarding canceled by user" message
+
+    Scenario 3: TO2 Retry Delay Configured
+    - Tests --to2-retry-delay 3s flag
+    - Validates delay applied between owner URL attempts
+    - Confirms multiple TO2 failures with delays before success
+
+    Comprehensive validations covering retry loops, delays, and exit conditions.
+test: ./test-retry-loop.sh
+duration: 10m
+require:
+  - go-fdo-client
+  - go-fdo-server-manufacturer
+  - go-fdo-server-rendezvous
+  - go-fdo-server-owner
