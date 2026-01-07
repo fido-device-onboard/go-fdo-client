@@ -124,14 +124,6 @@ systemctl start go-fdo-server-manufacturer.service || {
     exit 1
 }
 
-#TODO: Fix on server side
-log_warn "Fixing certificate permissions"
-chown go-fdo-server-manufacturer:go-fdo-server /etc/go-fdo-server/{manufacturer,device-ca}*.{crt,key}
-chmod g+r /etc/go-fdo-server/device-ca.crt
-chown go-fdo-server-owner:go-fdo-server /etc/go-fdo-server/owner*.{crt,key}
-chmod g+r /etc/go-fdo-server/owner.crt
-
-
 log_info "Starting FDO Rendezvous Server..."
 systemctl start go-fdo-server-rendezvous.service || {
     log_error "Failed to start FDO Rendezvous Server"
