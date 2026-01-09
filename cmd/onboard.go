@@ -46,7 +46,6 @@ var (
 	allowCredentialReuse bool
 	cipherSuite          string
 	dlDir                string
-	echoCmds             bool
 	enableInteropTest    bool
 	kexSuite             string
 	maxServiceInfoSize   int
@@ -110,17 +109,16 @@ func init() {
 	rootCmd.AddCommand(onboardCmd)
 	onboardCmd.Flags().BoolVar(&allowCredentialReuse, "allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
 	onboardCmd.Flags().StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
-	onboardCmd.Flags().StringVar(&dlDir, "download", "", "A dir to download files into (FSIM disabled if empty)")
+	onboardCmd.Flags().StringVar(&dlDir, "download", "", "fdo.download: override destination directory set by Owner server")
 	onboardCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
-	onboardCmd.Flags().BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
 	onboardCmd.Flags().BoolVar(&enableInteropTest, "enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
 	onboardCmd.Flags().StringVar(&kexSuite, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
 	onboardCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
 	onboardCmd.Flags().IntVar(&maxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
 	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
 	onboardCmd.Flags().DurationVar(&to2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
-	onboardCmd.Flags().Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
-	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "A dir to wget files into (FSIM disabled if empty)")
+	onboardCmd.Flags().Var(&uploads, "upload", "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
+	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "fdo.wget: override destination directory set by Owner server")
 
 	onboardCmd.MarkFlagRequired("key")
 	onboardCmd.MarkFlagRequired("kex")
@@ -358,61 +356,67 @@ func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose
 	if enableInteropTest {
 		fsims["fido_alliance"] = &fsim.Interop{}
 	}
+
+	// For now enable all supported service modules. Follow up: introduce a CLI option
+	// that allows the user to explicitly select which FSIMs should be
+	// enabled.
+
+	// Use service module defaults provided by the go-fdo library. Use the CLI options
+	// to customize the default behavior.
+
+	fsims["fdo.command"] = &fsim.Command{}
+
+	// fdo.download: enable error output. Use --download to force downloaded files into a specific
+	// local directory, otherwise allow the owner server to control where the file is stored on
+	// the local device
+	dlFSIM := &fsim.Download{
+		ErrorLog: &slogErrorWriter{},
+	}
 	if dlDir != "" {
-		fsims["fdo.download"] = &fsim.Download{
-			CreateTemp: func() (*os.File, error) {
-				tmpFile, err := os.CreateTemp(dlDir, ".fdo.download_*")
-				if err != nil {
-					return nil, err
-				}
-				return tmpFile, nil
-			},
-			NameToPath: func(name string) string {
-				cleanName := filepath.Clean(name)
-				if !filepath.IsAbs(cleanName) {
-					return filepath.Join(dlDir, cleanName)
-				}
-				return filepath.Join(dlDir, filepath.Base(cleanName))
-			},
-			ErrorLog: &slogErrorWriter{},
+		dlFSIM.CreateTemp = func() (*os.File, error) {
+			tmpFile, err := os.CreateTemp(dlDir, ".fdo.download_*")
+			if err != nil {
+				return nil, err
+			}
+			return tmpFile, nil
+		}
+		dlFSIM.NameToPath = func(name string) string {
+			cleanName := filepath.Clean(name)
+			return filepath.Join(dlDir, filepath.Base(cleanName))
 		}
 	}
-	if echoCmds {
-		fsims["fdo.command"] = &fsim.Command{
-			Timeout: time.Second,
-			Transform: func(cmd string, args []string) (string, []string) {
-				sanitizedArgs := make([]string, len(args))
-				for i, arg := range args {
-					sanitizedArgs[i] = fmt.Sprintf("%q", arg)
-				}
-				return "sh", []string{"-c", fmt.Sprintf("echo %s", strings.Join(sanitizedArgs, " "))}
-			},
-		}
+	fsims["fdo.download"] = dlFSIM
+
+	// fdo.upload: by default allow owner access to any file it requests (assume read
+	// access permissions are correct).  Use --upload to restrict which files/directories the
+	// owner may access
+	if len(uploads) == 0 {
+		uploads["/"] = "" // allow filesystem access, see fsVar.Open
 	}
-	if len(uploads) > 0 {
-		fsims["fdo.upload"] = &fsim.Upload{
-			FS: uploads,
-		}
+	fsims["fdo.upload"] = &fsim.Upload{
+		FS: uploads,
+	}
+
+	// fdo.wget: use --wget-dir to force downloaded files into a specific local directory,
+	// otherwise allow the owner server to control where the file is stored on the device
+	wgetFSIM := &fsim.Wget{
+		// bug: https://github.com/fido-device-onboard/go-fdo/issues/205
+		Timeout: time.Hour,
 	}
 	if wgetDir != "" {
-		fsims["fdo.wget"] = &fsim.Wget{
-			CreateTemp: func() (*os.File, error) {
-				tmpFile, err := os.CreateTemp(wgetDir, ".fdo.wget_*")
-				if err != nil {
-					return nil, err
-				}
-				return tmpFile, nil
-			},
-			NameToPath: func(name string) string {
-				cleanName := filepath.Clean(name)
-				if !filepath.IsAbs(cleanName) {
-					return filepath.Join(wgetDir, cleanName)
-				}
-				return filepath.Join(wgetDir, filepath.Base(cleanName))
-			},
-			Timeout: 10 * time.Second,
+		wgetFSIM.CreateTemp = func() (*os.File, error) {
+			tmpFile, err := os.CreateTemp(wgetDir, ".fdo.wget_*")
+			if err != nil {
+				return nil, err
+			}
+			return tmpFile, nil
+		}
+		wgetFSIM.NameToPath = func(name string) string {
+			cleanName := filepath.Clean(name)
+			return filepath.Join(wgetDir, filepath.Base(cleanName))
 		}
 	}
+	fsims["fdo.wget"] = wgetFSIM
 	conf.DeviceModules = fsims
 
 	return fdo.TO2(ctx, transport, to1d, conf)
