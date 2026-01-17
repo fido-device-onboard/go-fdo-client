@@ -399,10 +399,7 @@ func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose
 
 	// fdo.wget: use --wget-dir to force downloaded files into a specific local directory,
 	// otherwise allow the owner server to control where the file is stored on the device
-	wgetFSIM := &fsim.Wget{
-		// bug: https://github.com/fido-device-onboard/go-fdo/issues/205
-		Timeout: time.Hour,
-	}
+	wgetFSIM := &fsim.Wget{}
 	if wgetDir != "" {
 		wgetFSIM.CreateTemp = func() (*os.File, error) {
 			tmpFile, err := os.CreateTemp(wgetDir, ".fdo.wget_*")
