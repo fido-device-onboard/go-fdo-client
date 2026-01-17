@@ -74,8 +74,7 @@ Usage:
 Flags:
       --allow-credential-reuse     Allow credential reuse protocol during onboarding
       --cipher string              Name of cipher suite to use for encryption (see usage) (default "A128GCM")
-      --download string            A dir to download files into (FSIM disabled if empty)
-      --echo-commands              Echo all commands received to stdout (FSIM disabled if false)
+      --download string            fdo.download: override destination directory set by Owner server
   -h, --help                       help for onboard
       --insecure-tls               Skip TLS certificate verification
       --kex string                 Name of cipher suite to use for key exchange (see usage)
@@ -84,8 +83,8 @@ Flags:
       --resale                     Perform resale
       --rv-only                    Perform TO1 then stop
       --to2-retry-delay duration   Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)
-      --upload fsVar               List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty) (default [])
-      --wget-dir string            A dir to wget files into (FSIM disabled if empty)
+      --upload fsVar               fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times (default [])
+      --wget-dir string            fdo.wget: override destination directory set by Owner server
 
 Global Flags:
       --blob string   File path of device credential blob
