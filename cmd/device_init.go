@@ -17,12 +17,9 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"log/slog"
-	"math"
-	"math/big"
 	"net"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/fido-device-onboard/go-fdo"
@@ -42,6 +39,7 @@ var (
 	diDeviceInfoMac string
 	diKey           string
 	diKeyEnc        string
+	diSerialNumber  string
 	insecureTLS     bool
 )
 
@@ -98,7 +96,7 @@ func init() {
 	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
 	deviceInitCmd.Flags().StringVar(&diDeviceInfoMac, "device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
 	deviceInitCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-
+	deviceInitCmd.Flags().StringVar(&diSerialNumber, "serial-number", "", "Device Serial-number(optional), if not specified, it'll be gathered from the system")
 	// User must explicitly select the key type for the device credentials since the TPM resources are limited
 	deviceInitCmd.MarkFlagRequired("key")
 	deviceInitCmd.MarkFlagsMutuallyExclusive("device-info", "device-info-mac")
@@ -159,11 +157,15 @@ func doDI() (err error) { //nolint:gocyclo
 		return fmt.Errorf("error parsing CSR for device certificate chain: %w", err)
 	}
 
-	// Call the DI server
-	sn, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		return fmt.Errorf("error generating random serial number: %w", err)
+	// If Serial not provided, it will be gathered from system
+	if diSerialNumber == "" {
+		diSerialNumber, err = getSerial()
+		if err != nil {
+			//slog.Warn	instead
+			return fmt.Errorf("error getting device serial number: %w", err)
+		}
 	}
+
 	var keyEncoding protocol.KeyEncoding
 	switch {
 	case strings.EqualFold(diKeyEnc, "x509"):
@@ -193,11 +195,13 @@ func doDI() (err error) { //nolint:gocyclo
 			return fmt.Errorf("error getting device information from the system: %w", err)
 		}
 	}
+	//Log message for debugging
+	slog.Debug("Starting Device Initialization", "Serial Number", diSerialNumber, "Device Info", deviceInfo)
 
 	cred, err := fdo.DI(context.TODO(), tls.TlsTransport(diURL, nil, insecureTLS), custom.DeviceMfgInfo{
 		KeyType:      keyType,
 		KeyEncoding:  keyEncoding,
-		SerialNumber: strconv.FormatInt(sn.Int64(), 10),
+		SerialNumber: diSerialNumber,
 		DeviceInfo:   deviceInfo,
 		CertInfo:     cbor.X509CertificateRequest(*csr),
 	}, fdo.DIConfig{
