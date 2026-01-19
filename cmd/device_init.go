@@ -157,12 +157,11 @@ func doDI() (err error) { //nolint:gocyclo
 		return fmt.Errorf("error parsing CSR for device certificate chain: %w", err)
 	}
 
-	// If Serial not provided, it will be gathered from system
+	// If serial # is not provided, it will be gathered from system
 	if diSerialNumber == "" {
 		diSerialNumber, err = getSerial()
 		if err != nil {
-			//slog.Warn	instead
-			return fmt.Errorf("error getting device serial number: %w", err)
+			slog.Warn("error getting device serial number", "error", err)
 		}
 	}
 
