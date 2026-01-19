@@ -31,6 +31,7 @@ import (
 	"github.com/fido-device-onboard/go-fdo/protocol"
 	"github.com/fido-device-onboard/go-fdo/tpm"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -47,12 +48,41 @@ var validDiKeys = []string{"ec256", "ec384", "rsa2048", "rsa3072"}
 var validDiKeyEncs = []string{"x509", "x5chain", "cose"}
 
 var deviceInitCmd = &cobra.Command{
-	Use:   "device-init <server-url>",
+	Use:   "device-init [server-url]",
 	Short: "Run device initialization (DI)",
-	Args:  cobra.ExactArgs(1),
+	Long: `
+Run device initialization (DI) to register the device with a manufacturer server.
+The server URL can be provided as a positional argument, flag or via config file.
+At least one of --blob or --tpm is required to store device credentials.`,
+	Example: `
+  # Using CLI arguments:
+  go-fdo-client device-init http://127.0.0.1:8038 --key ec256 --blob cred.bin
+
+  # Using config file:
+  go-fdo-client device-init --config config.yaml
+
+  # Mix CLI and config (CLI takes precedence):
+  go-fdo-client device-init http://127.0.0.1:8038 --config config.yaml --key ec384`,
+	Args: cobra.MaximumNArgs(1),
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return bindFlags(cmd, "device-init")
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Set the server URL from the positional argument
-		diURL = args[0]
+		// Positional argument takes highest precedence
+		if len(args) > 0 {
+			diURL = args[0]
+		} else if cmd.Flags().Changed("server-url") {
+			diURL = viper.GetString("device-init.server-url")
+		} else if viper.IsSet("device-init.server-url") {
+			diURL = viper.GetString("device-init.server-url")
+		}
+
+		// Load other config values from viper if not set via CLI
+		loadStringFromConfig(cmd, "key", "device-init.key", &diKey)
+		loadStringFromConfig(cmd, "key-enc", "device-init.key-enc", &diKeyEnc)
+		loadStringFromConfig(cmd, "device-info", "device-init.device-info", &diDeviceInfo)
+		loadStringFromConfig(cmd, "device-info-mac", "device-init.device-info-mac", &diDeviceInfoMac)
+		loadBoolFromConfig(cmd, "insecure-tls", "device-init.insecure-tls", &insecureTLS)
 
 		if err := validateDIFlags(); err != nil {
 			return fmt.Errorf("Validation error: %v", err)
@@ -89,17 +119,21 @@ var deviceInitCmd = &cobra.Command{
 	},
 }
 
-func init() {
+func deviceInitCmdInit() {
 	rootCmd.AddCommand(deviceInitCmd)
+	deviceInitCmd.Flags().StringVar(&diURL, "server-url", "", "DI server URL (alternative to positional argument)")
 	deviceInitCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 	deviceInitCmd.Flags().StringVar(&diKeyEnc, "key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
 	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
 	deviceInitCmd.Flags().StringVar(&diDeviceInfoMac, "device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
 	deviceInitCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
 	deviceInitCmd.Flags().StringVar(&diSerialNumber, "serial-number", "", "Serial number for device credentials, if not specified, it'll be gathered from the system")
-	// User must explicitly select the key type for the device credentials since the TPM resources are limited
-	deviceInitCmd.MarkFlagRequired("key")
+
 	deviceInitCmd.MarkFlagsMutuallyExclusive("device-info", "device-info-mac")
+}
+
+func init() {
+	deviceInitCmdInit()
 }
 
 func doDI() (err error) { //nolint:gocyclo
@@ -254,7 +288,15 @@ func validateDiKey() error {
 }
 
 func validateDIFlags() error {
-	// idURL
+	// Check required fields
+	if diURL == "" {
+		return fmt.Errorf("server-url is required (via positional argument, --server-url flag, or config file)")
+	}
+	if diKey == "" {
+		return fmt.Errorf("--key is required (via CLI flag or config file)")
+	}
+
+	// Validate URL
 	parsedURL, err := url.ParseRequestURI(diURL)
 	if err != nil {
 		return fmt.Errorf("invalid DI URL: %s", diURL)

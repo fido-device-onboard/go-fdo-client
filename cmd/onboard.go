@@ -30,6 +30,7 @@ import (
 	"github.com/fido-device-onboard/go-fdo/protocol"
 	"github.com/fido-device-onboard/go-fdo/serviceinfo"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type fsVar map[string]string
@@ -67,7 +68,46 @@ var validKexSuites = []string{
 var onboardCmd = &cobra.Command{
 	Use:   "onboard",
 	Short: "Run FDO TO1 and TO2 onboarding",
+	Long: `
+Run FDO TO1 and TO2 onboarding to transfer device ownership to the owner server.
+The device must have been initialized (device-init) before running onboard.
+At least one of --blob or --tpm is required to access device credentials.`,
+	Example: `
+  # Using CLI arguments:
+  go-fdo-client onboard --key ec256 --kex ECDH256 --blob cred.bin
+
+  # Using config file:
+  go-fdo-client onboard --config config.yaml
+
+  # Mix CLI and config (CLI takes precedence):
+  go-fdo-client onboard --config config.yaml --cipher A256GCM`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return bindFlags(cmd, "onboard")
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Load config values from viper if not set via CLI
+		loadStringFromConfig(cmd, "key", "onboard.key", &diKey)
+		loadStringFromConfig(cmd, "kex", "onboard.kex", &kexSuite)
+		loadStringFromConfig(cmd, "cipher", "onboard.cipher", &cipherSuite)
+		loadStringFromConfig(cmd, "download", "onboard.download", &dlDir)
+		loadBoolFromConfig(cmd, "echo-commands", "onboard.echo-commands", &echoCmds)
+		loadBoolFromConfig(cmd, "insecure-tls", "onboard.insecure-tls", &insecureTLS)
+		loadIntFromConfig(cmd, "max-serviceinfo-size", "onboard.max-serviceinfo-size", &maxServiceInfoSize)
+		loadBoolFromConfig(cmd, "allow-credential-reuse", "onboard.allow-credential-reuse", &allowCredentialReuse)
+		loadBoolFromConfig(cmd, "resale", "onboard.resale", &resale)
+		loadDurationFromConfig(cmd, "to2-retry-delay", "onboard.to2-retry-delay", &to2RetryDelay)
+		loadStringFromConfig(cmd, "wget-dir", "onboard.wget-dir", &wgetDir)
+
+		// Handle upload from config (list of strings) - special case, can't use helper
+		if !cmd.Flags().Changed("upload") && viper.IsSet("onboard.upload") {
+			uploadPaths := viper.GetStringSlice("onboard.upload")
+			for _, path := range uploadPaths {
+				if err := uploads.Set(path); err != nil {
+					return fmt.Errorf("invalid upload path in config: %w", err)
+				}
+			}
+		}
+
 		if err := validateOnboardFlags(); err != nil {
 			return fmt.Errorf("validation error: %v", err)
 		}
@@ -105,7 +145,7 @@ var onboardCmd = &cobra.Command{
 	},
 }
 
-func init() {
+func onboardCmdInit() {
 	rootCmd.AddCommand(onboardCmd)
 	onboardCmd.Flags().BoolVar(&allowCredentialReuse, "allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
 	onboardCmd.Flags().StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
@@ -119,9 +159,10 @@ func init() {
 	onboardCmd.Flags().DurationVar(&to2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
 	onboardCmd.Flags().Var(&uploads, "upload", "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
 	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "fdo.wget: override destination directory set by Owner server")
+}
 
-	onboardCmd.MarkFlagRequired("key")
-	onboardCmd.MarkFlagRequired("kex")
+func init() {
+	onboardCmdInit()
 }
 
 func doOnboard() error {
@@ -530,6 +571,14 @@ func pathToName(path, abs string) string {
 }
 
 func validateOnboardFlags() error {
+	// Check required fields
+	if diKey == "" {
+		return fmt.Errorf("--key is required (via CLI flag or config file)")
+	}
+	if kexSuite == "" {
+		return fmt.Errorf("--kex is required (via CLI flag or config file)")
+	}
+
 	if !slices.Contains(validCipherSuites, cipherSuite) {
 		return fmt.Errorf("invalid cipher suite: %s", cipherSuite)
 	}
