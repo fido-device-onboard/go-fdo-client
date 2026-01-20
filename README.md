@@ -72,18 +72,20 @@ Usage:
   go-fdo-client onboard [flags]
 
 Flags:
-      --cipher string     Name of cipher suite to use for encryption (see usage) (default "A128GCM")
-      --download string   A dir to download files into (FSIM disabled if empty)
-      --echo-commands     Echo all commands received to stdout (FSIM disabled if false)
-  -h, --help              help for onboard
-      --insecure-tls      Skip TLS certificate verification
-      --kex string        Name of cipher suite to use for key exchange (see usage)
-      --key string        Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]
-      --resale            Perform resale
-      --rv-only           Perform TO1 then stop
+      --allow-credential-reuse     Allow credential reuse protocol during onboarding
+      --cipher string              Name of cipher suite to use for encryption (see usage) (default "A128GCM")
+      --download string            A dir to download files into (FSIM disabled if empty)
+      --echo-commands              Echo all commands received to stdout (FSIM disabled if false)
+  -h, --help                       help for onboard
+      --insecure-tls               Skip TLS certificate verification
+      --kex string                 Name of cipher suite to use for key exchange (see usage)
+      --key string                 Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]
+      --max-serviceinfo-size int   Maximum service info size to receive (default 1300)
+      --resale                     Perform resale
+      --rv-only                    Perform TO1 then stop
       --to2-retry-delay duration   Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)
-      --upload fsVar      List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty) (default [])
-      --wget-dir string   A dir to wget files into (FSIM disabled if empty)
+      --upload fsVar               List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty) (default [])
+      --wget-dir string            A dir to wget files into (FSIM disabled if empty)
 
 Global Flags:
       --blob string   File path of device credential blob

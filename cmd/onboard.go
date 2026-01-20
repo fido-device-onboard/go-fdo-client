@@ -4,11 +4,13 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"net"
 	"os"
@@ -32,15 +34,25 @@ import (
 
 type fsVar map[string]string
 
+type slogErrorWriter struct{}
+
+func (e slogErrorWriter) Write(p []byte) (int, error) {
+	w := bytes.TrimSpace(p)
+	slog.Error(string(w))
+	return len(w), nil
+}
+
 var (
-	cipherSuite   string
-	dlDir         string
-	echoCmds      bool
-	kexSuite      string
-	resale        bool
-	to2RetryDelay time.Duration
-	uploads       = make(fsVar)
-	wgetDir       string
+	allowCredentialReuse bool
+	cipherSuite          string
+	dlDir                string
+	echoCmds             bool
+	kexSuite             string
+	maxServiceInfoSize   int
+	resale               bool
+	to2RetryDelay        time.Duration
+	uploads              = make(fsVar)
+	wgetDir              string
 )
 var validCipherSuites = []string{
 	"A128GCM", "A192GCM", "A256GCM",
@@ -95,12 +107,14 @@ var onboardCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(onboardCmd)
+	onboardCmd.Flags().BoolVar(&allowCredentialReuse, "allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
 	onboardCmd.Flags().StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
 	onboardCmd.Flags().StringVar(&dlDir, "download", "", "A dir to download files into (FSIM disabled if empty)")
 	onboardCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 	onboardCmd.Flags().BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
 	onboardCmd.Flags().StringVar(&kexSuite, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
 	onboardCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
+	onboardCmd.Flags().IntVar(&maxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
 	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
 	onboardCmd.Flags().DurationVar(&to2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
 	onboardCmd.Flags().Var(&uploads, "upload", "List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty)")
@@ -151,9 +165,10 @@ func doOnboard() error {
 			FileSep: ";",
 			Bin:     runtime.GOARCH,
 		},
-		KeyExchange:          kex.Suite(kexSuite),
-		CipherSuite:          kexCipherSuiteID,
-		AllowCredentialReuse: true,
+		KeyExchange:               kex.Suite(kexSuite),
+		CipherSuite:               kexCipherSuiteID,
+		AllowCredentialReuse:      allowCredentialReuse,
+		MaxServiceInfoSizeReceive: uint16(maxServiceInfoSize),
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -356,6 +371,7 @@ func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose
 				}
 				return filepath.Join(dlDir, filepath.Base(cleanName))
 			},
+			ErrorLog: &slogErrorWriter{},
 		}
 	}
 	if echoCmds {
@@ -517,6 +533,10 @@ func validateOnboardFlags() error {
 	if !slices.Contains(validKexSuites, kexSuite) {
 		return fmt.Errorf("invalid key exchange suite: '%s', options [%s]",
 			kexSuite, strings.Join(validKexSuites, ", "))
+	}
+
+	if maxServiceInfoSize < 0 || maxServiceInfoSize > math.MaxUint16 {
+		return fmt.Errorf("max-serviceinfo-size must be between 0 and %d", math.MaxUint16)
 	}
 
 	for path := range uploads {
