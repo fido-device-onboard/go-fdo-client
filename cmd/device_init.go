@@ -96,7 +96,7 @@ func init() {
 	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
 	deviceInitCmd.Flags().StringVar(&diDeviceInfoMac, "device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
 	deviceInitCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	deviceInitCmd.Flags().StringVar(&diSerialNumber, "serial-number", "", "Device Serial-number(optional), if not specified, it'll be gathered from the system")
+	deviceInitCmd.Flags().StringVar(&diSerialNumber, "serial-number", "", "Serial number for device credentials, if not specified, it'll be gathered from the system")
 	// User must explicitly select the key type for the device credentials since the TPM resources are limited
 	deviceInitCmd.MarkFlagRequired("key")
 	deviceInitCmd.MarkFlagsMutuallyExclusive("device-info", "device-info-mac")
@@ -158,11 +158,13 @@ func doDI() (err error) { //nolint:gocyclo
 	}
 
 	// If serial # is not provided, it will be gathered from system
+	var serialNumber string
 	if diSerialNumber == "" {
-		diSerialNumber, err = getSerial()
+		serialNumber, err = getSerial()
 		if err != nil {
 			slog.Warn("error getting device serial number", "error", err)
 		}
+		diSerialNumber = serialNumber
 	}
 
 	var keyEncoding protocol.KeyEncoding
@@ -189,12 +191,8 @@ func doDI() (err error) { //nolint:gocyclo
 			return fmt.Errorf("error getting device information from iface %s: %w", diDeviceInfoMac, err)
 		}
 	default:
-		deviceInfo, err = getSerial()
-		if err != nil {
-			return fmt.Errorf("error getting device information from the system: %w", err)
-		}
+		deviceInfo = diSerialNumber
 	}
-	//Log message for debugging
 	slog.Debug("Starting Device Initialization", "Serial Number", diSerialNumber, "Device Info", deviceInfo)
 
 	cred, err := fdo.DI(context.TODO(), tls.TlsTransport(diURL, nil, insecureTLS), custom.DeviceMfgInfo{
