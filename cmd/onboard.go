@@ -47,6 +47,7 @@ var (
 	cipherSuite          string
 	dlDir                string
 	echoCmds             bool
+	enableInteropTest    bool
 	kexSuite             string
 	maxServiceInfoSize   int
 	resale               bool
@@ -112,6 +113,7 @@ func init() {
 	onboardCmd.Flags().StringVar(&dlDir, "download", "", "A dir to download files into (FSIM disabled if empty)")
 	onboardCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 	onboardCmd.Flags().BoolVar(&echoCmds, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
+	onboardCmd.Flags().BoolVar(&enableInteropTest, "enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
 	onboardCmd.Flags().StringVar(&kexSuite, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
 	onboardCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
 	onboardCmd.Flags().IntVar(&maxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
@@ -352,8 +354,9 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 }
 
 func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
-	fsims := map[string]serviceinfo.DeviceModule{
-		"fido_alliance": &fsim.Interop{},
+	fsims := map[string]serviceinfo.DeviceModule{}
+	if enableInteropTest {
+		fsims["fido_alliance"] = &fsim.Interop{}
 	}
 	if dlDir != "" {
 		fsims["fdo.download"] = &fsim.Download{
