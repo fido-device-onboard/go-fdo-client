@@ -53,11 +53,11 @@ Usage:
 Flags:
       --device-info string       Device information for device credentials, if not specified, it'll be gathered from the system
       --device-info-mac string   Mac-address's iface e.g. eth0 for device credentials   
-      --serial-number string     Serial number for device credentials, if not specified, it'll be gathered from the system
   -h, --help                     help for device-init
       --insecure-tls             Skip TLS certificate verification
       --key string               Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]
       --key-enc string           Public key encoding to use for manufacturer key [x509,x5chain,cose] (default "x509")
+      --serial-number string     Serial number for device credentials, if not specified, it'll be gathered from the system
 
 Global Flags:
       --blob string   File path of device credential blob

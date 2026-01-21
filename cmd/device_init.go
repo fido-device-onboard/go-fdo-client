@@ -193,8 +193,11 @@ func doDI() (err error) { //nolint:gocyclo
 	default:
 		deviceInfo = diSerialNumber
 		if deviceInfo == "" {
-			return fmt.Errorf("device info, set to serial number by default can not be determined." +
-				"Please provide the serial number using '--serial-number' flag, the device info with '--device-info', or both")
+			return fmt.Errorf("device info cannot be determined automatically. " +
+				"Please specify either:\n" +
+				"  --serial-number <value>  (to set device serial number)\n" +
+				"  --device-info <value>    (to set device info directly)\n" +
+				"  or both flags")
 		}
 	}
 	slog.Debug("Starting Device Initialization", "Serial Number", diSerialNumber, "Device Info", deviceInfo)
