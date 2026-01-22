@@ -91,6 +91,7 @@ At least one of --blob or --tpm is required to access device credentials.`,
 		loadStringFromConfig(cmd, "cipher", "onboard.cipher", &cipherSuite)
 		loadStringFromConfig(cmd, "download", "onboard.download", &dlDir)
 		loadBoolFromConfig(cmd, "echo-commands", "onboard.echo-commands", &echoCmds)
+		loadBoolFromConfig(cmd, "enable-interop-test", "onboard.enable-interop-test", &enableInteropTest)
 		loadBoolFromConfig(cmd, "insecure-tls", "onboard.insecure-tls", &insecureTLS)
 		loadIntFromConfig(cmd, "max-serviceinfo-size", "onboard.max-serviceinfo-size", &maxServiceInfoSize)
 		loadBoolFromConfig(cmd, "allow-credential-reuse", "onboard.allow-credential-reuse", &allowCredentialReuse)
