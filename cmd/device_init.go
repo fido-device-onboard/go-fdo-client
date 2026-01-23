@@ -34,17 +34,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var (
-	diURL           string
-	diDeviceInfo    string
-	diDeviceInfoMac string
-	diKey           string
-	diKeyEnc        string
-	diSerialNumber  string
-	insecureTLS     bool
-)
+var diConf DeviceInitClientConfig
 
-var validDiKeys = []string{"ec256", "ec384", "rsa2048", "rsa3072"}
 var validDiKeyEncs = []string{"x509", "x5chain", "cose"}
 
 var deviceInitCmd = &cobra.Command{
@@ -65,35 +56,30 @@ At least one of --blob or --tpm is required to store device credentials.`,
   go-fdo-client device-init http://127.0.0.1:8038 --config config.yaml --key ec384`,
 	Args: cobra.MaximumNArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		return bindFlags(cmd, "device-init")
+		err := bindFlags(cmd, "device-init")
+		if err != nil {
+			return err
+		}
+
+		if len(args) > 0 {
+			viper.Set("device-init.server-url", args[0])
+		}
+
+		if err := viper.Unmarshal(&diConf); err != nil {
+			return fmt.Errorf("failed to unmarshal device-init config: %w", err)
+		}
+
+		return diConf.validate()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Positional argument takes highest precedence
-		if len(args) > 0 {
-			diURL = args[0]
-		} else if cmd.Flags().Changed("server-url") {
-			diURL = viper.GetString("device-init.server-url")
-		} else if viper.IsSet("device-init.server-url") {
-			diURL = viper.GetString("device-init.server-url")
-		}
 
-		// Load other config values from viper if not set via CLI
-		loadStringFromConfig(cmd, "key", "device-init.key", &diKey)
-		loadStringFromConfig(cmd, "key-enc", "device-init.key-enc", &diKeyEnc)
-		loadStringFromConfig(cmd, "device-info", "device-init.device-info", &diDeviceInfo)
-		loadStringFromConfig(cmd, "device-info-mac", "device-init.device-info-mac", &diDeviceInfoMac)
-		loadBoolFromConfig(cmd, "insecure-tls", "device-init.insecure-tls", &insecureTLS)
-
-		if err := validateDIFlags(); err != nil {
-			return fmt.Errorf("Validation error: %v", err)
-		}
-		if debug {
+		if rootConfig.Debug {
 			level.Set(slog.LevelDebug)
 		}
 
-		if tpmPath != "" {
+		if rootConfig.TPM != "" {
 			var err error
-			tpmc, err = tpm_utils.TpmOpen(tpmPath)
+			tpmc, err = tpm_utils.TpmOpen(rootConfig.TPM)
 			if err != nil {
 				return err
 			}
@@ -121,15 +107,12 @@ At least one of --blob or --tpm is required to store device credentials.`,
 
 func deviceInitCmdInit() {
 	rootCmd.AddCommand(deviceInitCmd)
-	deviceInitCmd.Flags().StringVar(&diURL, "server-url", "", "DI server URL (alternative to positional argument)")
-	deviceInitCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
-	deviceInitCmd.Flags().StringVar(&diKeyEnc, "key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
-	deviceInitCmd.Flags().StringVar(&diDeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
-	deviceInitCmd.Flags().StringVar(&diDeviceInfoMac, "device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
-	deviceInitCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	deviceInitCmd.Flags().StringVar(&diSerialNumber, "serial-number", "", "Serial number for device credentials, if not specified, it'll be gathered from the system")
+	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.KeyEnc, "key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
+	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.DeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
+	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.DeviceInfoMac, "device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
+	deviceInitCmd.Flags().BoolVar(&diConf.DeviceInit.InsecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
+	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.SerialNumber, "serial-number", "", "Serial number for device credentials, if not specified, it'll be gathered from the system")
 
-	deviceInitCmd.MarkFlagsMutuallyExclusive("device-info", "device-info-mac")
 }
 
 func init() {
@@ -147,7 +130,7 @@ func doDI() (err error) { //nolint:gocyclo
 	var sigAlg x509.SignatureAlgorithm
 	var keyType protocol.KeyType
 	var key crypto.Signer
-	switch diKey {
+	switch rootConfig.Key {
 	case "ec256":
 		keyType = protocol.Secp256r1KeyType
 		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -162,14 +145,14 @@ func doDI() (err error) { //nolint:gocyclo
 		keyType = protocol.RsaPkcsKeyType
 		key, err = rsa.GenerateKey(rand.Reader, 3072)
 	default:
-		return fmt.Errorf("unsupported key type: %s", diKey)
+		return fmt.Errorf("unsupported key type: %s", rootConfig.Key)
 	}
 	if err != nil {
 		return fmt.Errorf("error generating device key: %w", err)
 	}
 
 	// If using a TPM, swap key/hmac for that
-	if tpmPath != "" {
+	if rootConfig.TPM != "" {
 		var cleanup func() error
 		hmacSha256, hmacSha384, key, cleanup, err = tpmCred()
 		if err != nil {
@@ -203,26 +186,24 @@ func doDI() (err error) { //nolint:gocyclo
 
 	var keyEncoding protocol.KeyEncoding
 	switch {
-	case strings.EqualFold(diKeyEnc, "x509"):
+	case strings.EqualFold(diConf.DeviceInit.KeyEnc, "x509"):
 		keyEncoding = protocol.X509KeyEnc
-	case strings.EqualFold(diKeyEnc, "x5chain"):
+	case strings.EqualFold(diConf.DeviceInit.KeyEnc, "x5chain"):
 		keyEncoding = protocol.X5ChainKeyEnc
-	case strings.EqualFold(diKeyEnc, "cose"):
+	case strings.EqualFold(diConf.DeviceInit.KeyEnc, "cose"):
 		keyEncoding = protocol.CoseKeyEnc
 	default:
-		return fmt.Errorf("unsupported key encoding: %s", diKeyEnc)
+		return fmt.Errorf("unsupported key encoding: %s", diConf.DeviceInit.KeyEnc)
 	}
 
 	var deviceInfo string
 	switch {
-	case diDeviceInfo != "" && diDeviceInfoMac != "":
-		return fmt.Errorf("can't specify both --device-info and --device-info-mac")
-	case diDeviceInfo != "":
-		deviceInfo = diDeviceInfo
-	case diDeviceInfoMac != "":
-		deviceInfo, err = getMac(diDeviceInfoMac)
+	case diConf.DeviceInit.DeviceInfo != "":
+		deviceInfo = diConf.DeviceInit.DeviceInfo
+	case diConf.DeviceInit.DeviceInfoMac != "":
+		deviceInfo, err = getMac(diConf.DeviceInit.DeviceInfoMac)
 		if err != nil {
-			return fmt.Errorf("error getting device information from iface %s: %w", diDeviceInfoMac, err)
+			return fmt.Errorf("error getting device information from iface %s: %w", diConf.DeviceInit.DeviceInfoMac, err)
 		}
 	default:
 		deviceInfo = diSerialNumber
@@ -236,7 +217,7 @@ func doDI() (err error) { //nolint:gocyclo
 	}
 	slog.Debug("Starting Device Initialization", "Serial Number", diSerialNumber, "Device Info", deviceInfo)
 
-	cred, err := fdo.DI(context.TODO(), tls.TlsTransport(diURL, nil, insecureTLS), custom.DeviceMfgInfo{
+	cred, err := fdo.DI(context.TODO(), tls.TlsTransport(diConf.DeviceInit.ServerURL, nil, diConf.DeviceInit.InsecureTLS), custom.DeviceMfgInfo{
 		KeyType:      keyType,
 		KeyEncoding:  keyEncoding,
 		SerialNumber: diSerialNumber,
@@ -251,7 +232,7 @@ func doDI() (err error) { //nolint:gocyclo
 		return err
 	}
 
-	if tpmPath != "" {
+	if rootConfig.TPM != "" {
 		return saveTpmCred(fdoTpmDeviceCredential{
 			tpm.DeviceCredential{
 				DeviceCredential: *cred,
@@ -280,30 +261,29 @@ func doDI() (err error) { //nolint:gocyclo
 	return err
 }
 
-func validateDiKey() error {
-	if !slices.Contains(validDiKeys, diKey) {
-		return fmt.Errorf("invalid --key type: '%s' [options: %s]", diKey, strings.Join(validDiKeys, ", "))
+func (d *DeviceInitClientConfig) validate() error {
+	if d.DeviceInit.ServerURL == "" {
+		return fmt.Errorf("server-url is required (via positional argument, or config file)")
 	}
-	return nil
-}
 
-func validateDIFlags() error {
-	// Check required fields
-	if diURL == "" {
-		return fmt.Errorf("server-url is required (via positional argument, --server-url flag, or config file)")
-	}
-	if diKey == "" {
+	if d.Key == "" {
 		return fmt.Errorf("--key is required (via CLI flag or config file)")
 	}
+	if err := validateKey(d.Key); err != nil {
+		return err
+	}
 
-	// Validate URL
-	parsedURL, err := url.ParseRequestURI(diURL)
+	if d.DeviceInit.DeviceInfo != "" && d.DeviceInit.DeviceInfoMac != "" {
+		return fmt.Errorf("can't specify both --device-info and --device-info-mac")
+	}
+
+	parsedURL, err := url.ParseRequestURI(d.DeviceInit.ServerURL)
 	if err != nil {
-		return fmt.Errorf("invalid DI URL: %s", diURL)
+		return fmt.Errorf("invalid DI URL: %s", d.DeviceInit.ServerURL)
 	}
 	host, port, err := net.SplitHostPort(parsedURL.Host)
 	if err != nil {
-		return fmt.Errorf("invalid DI URL: %s", diURL)
+		return fmt.Errorf("invalid DI URL: %s", d.DeviceInit.ServerURL)
 	}
 	if net.ParseIP(host) == nil && !isValidHostname(host) {
 		return fmt.Errorf("invalid hostname: %s", host)
@@ -312,12 +292,8 @@ func validateDIFlags() error {
 		return fmt.Errorf("invalid port: %s", port)
 	}
 
-	if err = validateDiKey(); err != nil {
-		return err
-	}
-
-	if !slices.Contains(validDiKeyEncs, diKeyEnc) {
-		return fmt.Errorf("invalid DI key encoding: %s", diKeyEnc)
+	if !slices.Contains(validDiKeyEncs, d.DeviceInit.KeyEnc) {
+		return fmt.Errorf("invalid DI key encoding: %s", d.DeviceInit.KeyEnc)
 	}
 
 	return nil

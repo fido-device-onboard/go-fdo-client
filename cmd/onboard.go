@@ -43,18 +43,9 @@ func (e slogErrorWriter) Write(p []byte) (int, error) {
 	return len(w), nil
 }
 
-var (
-	allowCredentialReuse bool
-	cipherSuite          string
-	dlDir                string
-	enableInteropTest    bool
-	kexSuite             string
-	maxServiceInfoSize   int
-	resale               bool
-	to2RetryDelay        time.Duration
-	uploads              = make(fsVar)
-	wgetDir              string
-)
+var onboardConfig OnboardClientConfig
+var fsVarUploads fsVar
+
 var validCipherSuites = []string{
 	"A128GCM", "A192GCM", "A256GCM",
 	"AES-CCM-64-128-128", "AES-CCM-64-128-256",
@@ -82,43 +73,26 @@ At least one of --blob or --tpm is required to access device credentials.`,
   # Mix CLI and config (CLI takes precedence):
   go-fdo-client onboard --config config.yaml --cipher A256GCM`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		return bindFlags(cmd, "onboard")
+		err := bindFlags(cmd, "onboard")
+		if err != nil {
+			return err
+		}
+
+		if err := viper.Unmarshal(&onboardConfig); err != nil {
+			return fmt.Errorf("failed to unmarshal onboard config: %w", err)
+		}
+
+		return onboardConfig.validate()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Load config values from viper if not set via CLI
-		loadStringFromConfig(cmd, "key", "onboard.key", &diKey)
-		loadStringFromConfig(cmd, "kex", "onboard.kex", &kexSuite)
-		loadStringFromConfig(cmd, "cipher", "onboard.cipher", &cipherSuite)
-		loadStringFromConfig(cmd, "download", "onboard.download", &dlDir)
-		loadBoolFromConfig(cmd, "echo-commands", "onboard.echo-commands", &echoCmds)
-		loadBoolFromConfig(cmd, "enable-interop-test", "onboard.enable-interop-test", &enableInteropTest)
-		loadBoolFromConfig(cmd, "insecure-tls", "onboard.insecure-tls", &insecureTLS)
-		loadIntFromConfig(cmd, "max-serviceinfo-size", "onboard.max-serviceinfo-size", &maxServiceInfoSize)
-		loadBoolFromConfig(cmd, "allow-credential-reuse", "onboard.allow-credential-reuse", &allowCredentialReuse)
-		loadBoolFromConfig(cmd, "resale", "onboard.resale", &resale)
-		loadDurationFromConfig(cmd, "to2-retry-delay", "onboard.to2-retry-delay", &to2RetryDelay)
-		loadStringFromConfig(cmd, "wget-dir", "onboard.wget-dir", &wgetDir)
 
-		// Handle upload from config (list of strings) - special case, can't use helper
-		if !cmd.Flags().Changed("upload") && viper.IsSet("onboard.upload") {
-			uploadPaths := viper.GetStringSlice("onboard.upload")
-			for _, path := range uploadPaths {
-				if err := uploads.Set(path); err != nil {
-					return fmt.Errorf("invalid upload path in config: %w", err)
-				}
-			}
-		}
-
-		if err := validateOnboardFlags(); err != nil {
-			return fmt.Errorf("validation error: %v", err)
-		}
-		if debug {
+		if rootConfig.Debug {
 			level.Set(slog.LevelDebug)
 		}
 
-		if tpmPath != "" {
+		if rootConfig.TPM != "" {
 			var err error
-			tpmc, err = tpm_utils.TpmOpen(tpmPath)
+			tpmc, err = tpm_utils.TpmOpen(rootConfig.TPM)
 			if err != nil {
 				return err
 			}
@@ -132,7 +106,7 @@ At least one of --blob or --tpm is required to access device credentials.`,
 
 		printDeviceStatus(deviceStatus)
 
-		if deviceStatus == FDO_STATE_PRE_TO1 || (deviceStatus == FDO_STATE_IDLE && resale) {
+		if deviceStatus == FDO_STATE_PRE_TO1 || (deviceStatus == FDO_STATE_IDLE && onboardConfig.Onboard.Resale) {
 			return doOnboard()
 		} else if deviceStatus == FDO_STATE_IDLE {
 			slog.Info("FDO in Idle State. Device Onboarding already completed")
@@ -148,18 +122,18 @@ At least one of --blob or --tpm is required to access device credentials.`,
 
 func onboardCmdInit() {
 	rootCmd.AddCommand(onboardCmd)
-	onboardCmd.Flags().BoolVar(&allowCredentialReuse, "allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
-	onboardCmd.Flags().StringVar(&cipherSuite, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
-	onboardCmd.Flags().StringVar(&dlDir, "download", "", "fdo.download: override destination directory set by Owner server")
-	onboardCmd.Flags().StringVar(&diKey, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
-	onboardCmd.Flags().BoolVar(&enableInteropTest, "enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
-	onboardCmd.Flags().StringVar(&kexSuite, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
-	onboardCmd.Flags().BoolVar(&insecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	onboardCmd.Flags().IntVar(&maxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
-	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
-	onboardCmd.Flags().DurationVar(&to2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
-	onboardCmd.Flags().Var(&uploads, "upload", "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
-	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "fdo.wget: override destination directory set by Owner server")
+	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.AllowCredentialReuse, "allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
+	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.Cipher, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
+	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.Download, "download", "", "fdo.download: override destination directory set by Owner server")
+	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.EchoCommands, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
+	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.EnableInteropTest, "enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
+	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.Kex, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
+	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.InsecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
+	onboardCmd.Flags().IntVar(&onboardConfig.Onboard.MaxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
+	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.Resale, "resale", false, "Perform resale")
+	onboardCmd.Flags().DurationVar(&onboardConfig.Onboard.TO2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
+	onboardCmd.Flags().StringArrayVar(&onboardConfig.Onboard.Upload, "upload", nil, "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
+	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.WgetDir, "wget-dir", "", "fdo.wget: override destination directory set by Owner server")
 }
 
 func init() {
@@ -177,9 +151,9 @@ func doOnboard() error {
 	}
 
 	// Try TO1+TO2
-	kexCipherSuiteID, ok := kex.CipherSuiteByName(cipherSuite)
+	kexCipherSuiteID, ok := kex.CipherSuiteByName(onboardConfig.Onboard.Cipher)
 	if !ok {
-		return fmt.Errorf("invalid key exchange cipher suite: %s", cipherSuite)
+		return fmt.Errorf("invalid key exchange cipher suite: %s", onboardConfig.Onboard.Cipher)
 	}
 
 	osVersion, err := getOSVersion()
@@ -207,10 +181,10 @@ func doOnboard() error {
 			FileSep: ";",
 			Bin:     runtime.GOARCH,
 		},
-		KeyExchange:               kex.Suite(kexSuite),
+		KeyExchange:               kex.Suite(onboardConfig.Onboard.Kex),
 		CipherSuite:               kexCipherSuiteID,
-		AllowCredentialReuse:      allowCredentialReuse,
-		MaxServiceInfoSizeReceive: uint16(maxServiceInfoSize),
+		AllowCredentialReuse:      onboardConfig.Onboard.AllowCredentialReuse,
+		MaxServiceInfoSizeReceive: uint16(onboardConfig.Onboard.MaxServiceInfoSize),
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -265,7 +239,7 @@ func getOwnerURLs(ctx context.Context, directive *protocol.RvDirective, conf fdo
 	slog.Info("Attempting TO1 protocol")
 	for _, url := range directive.URLs {
 		var err error
-		to1d, err = fdo.TO1(ctx, tls.TlsTransport(url.String(), nil, insecureTLS), conf.Cred, conf.Key, nil)
+		to1d, err = fdo.TO1(ctx, tls.TlsTransport(url.String(), nil, onboardConfig.Onboard.InsecureTLS), conf.Cred, conf.Key, nil)
 		if err != nil {
 			slog.Error("TO1 failed", "base URL", url.String(), "error", err)
 			continue
@@ -354,7 +328,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 			}
 			for j, baseURL := range ownerURLs {
 				isLastURL := (j == len(ownerURLs)-1)
-				newDC, err := transferOwnership2(ctx, tls.TlsTransport(baseURL, nil, insecureTLS), to1d, conf)
+				newDC, err := transferOwnership2(ctx, tls.TlsTransport(baseURL, nil, onboardConfig.Onboard.InsecureTLS), to1d, conf)
 				if newDC != nil {
 					slog.Info("TO2 succeeded", "base URL", baseURL)
 					return newDC, nil
@@ -363,9 +337,9 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 
 				// Apply configurable delay between Owner URLs within a directive
 				// (not spec-compliant, but prevents hammering the same server via different URLs)
-				if !isLastURL && to2RetryDelay > 0 {
-					slog.Info("Applying TO2 retry delay", "delay", to2RetryDelay)
-					if err := applyDelay(ctx, to2RetryDelay); err != nil {
+				if !isLastURL && onboardConfig.Onboard.TO2RetryDelay > 0 {
+					slog.Info("Applying TO2 retry delay", "delay", onboardConfig.Onboard.TO2RetryDelay)
+					if err := applyDelay(ctx, onboardConfig.Onboard.TO2RetryDelay); err != nil {
 						return nil, err
 					}
 				}
@@ -397,7 +371,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 // All standard FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) are enabled
 // by default using go-fdo library defaults. The CLI parameters allow customization
 // of the default behavior.
-func initializeFSIMs(dlDir, wgetDir string, uploads fsVar, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
+func initializeFSIMs(dlDir, wgetDir string, uploads []string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
 	fsims := map[string]serviceinfo.DeviceModule{}
 	if enableInteropTest {
 		fsims["fido_alliance"] = &fsim.Interop{}
@@ -436,11 +410,11 @@ func initializeFSIMs(dlDir, wgetDir string, uploads fsVar, enableInteropTest boo
 	// fdo.upload: by default allow owner access to any file it requests (assume read
 	// access permissions are correct).  Use --upload to restrict which files/directories the
 	// owner may access
-	if len(uploads) == 0 {
-		uploads["/"] = "" // allow filesystem access, see fsVar.Open
+	if len(fsVarUploads) == 0 {
+		fsVarUploads["/"] = "" // allow filesystem access, see fsVar.Open
 	}
 	fsims["fdo.upload"] = &fsim.Upload{
-		FS: uploads,
+		FS: fsVarUploads,
 	}
 
 	// fdo.wget: use --wget-dir to force downloaded files into a specific local directory,
@@ -465,7 +439,7 @@ func initializeFSIMs(dlDir, wgetDir string, uploads fsVar, enableInteropTest boo
 }
 
 func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
-	conf.DeviceModules = initializeFSIMs(dlDir, wgetDir, uploads, enableInteropTest)
+	conf.DeviceModules = initializeFSIMs(onboardConfig.Onboard.Download, onboardConfig.Onboard.WgetDir, onboardConfig.Onboard.Upload, onboardConfig.Onboard.EnableInteropTest)
 	return fdo.TO2(ctx, transport, to1d, conf)
 }
 
@@ -493,32 +467,6 @@ func printDeviceStatus(status FdoDeviceState) {
 	case FDO_STATE_ERROR:
 		slog.Debug("Error in getting device status")
 	}
-}
-
-func (files fsVar) String() string {
-	if len(files) == 0 {
-		return "[]"
-	}
-	paths := "["
-	for path := range files {
-		paths += path + ","
-	}
-	return paths[:len(paths)-1] + "]"
-}
-
-func (files fsVar) Set(paths string) error {
-	for _, path := range strings.Split(paths, ",") {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return fmt.Errorf("[%q]: %w", path, err)
-		}
-		files[pathToName(path, abs)] = abs
-	}
-	return nil
-}
-
-func (files fsVar) Type() string {
-	return "fsVar"
 }
 
 // Open implements fs.FS
@@ -571,37 +519,37 @@ func pathToName(path, abs string) string {
 	return filepath.Join(pathparts...)
 }
 
-func validateOnboardFlags() error {
-	// Check required fields
-	if diKey == "" {
+func (o *OnboardClientConfig) validate() error {
+	if o.Key == "" {
 		return fmt.Errorf("--key is required (via CLI flag or config file)")
 	}
-	if kexSuite == "" {
-		return fmt.Errorf("--kex is required (via CLI flag or config file)")
-	}
-
-	if !slices.Contains(validCipherSuites, cipherSuite) {
-		return fmt.Errorf("invalid cipher suite: %s", cipherSuite)
-	}
-
-	if dlDir != "" && (!isValidPath(dlDir) || !fileExists(dlDir)) {
-		return fmt.Errorf("invalid download directory: %s", dlDir)
-	}
-
-	if err := validateDiKey(); err != nil {
+	if err := validateKey(o.Key); err != nil {
 		return err
 	}
 
-	if !slices.Contains(validKexSuites, kexSuite) {
-		return fmt.Errorf("invalid key exchange suite: '%s', options [%s]",
-			kexSuite, strings.Join(validKexSuites, ", "))
+	if o.Onboard.Kex == "" {
+		return fmt.Errorf("--kex is required (via CLI flag or config file)")
 	}
 
-	if maxServiceInfoSize < 0 || maxServiceInfoSize > math.MaxUint16 {
+	if !slices.Contains(validCipherSuites, o.Onboard.Cipher) {
+		return fmt.Errorf("invalid cipher suite: %s", o.Onboard.Cipher)
+	}
+
+	if o.Onboard.Download != "" && (!isValidPath(o.Onboard.Download) || !fileExists(o.Onboard.Download)) {
+		return fmt.Errorf("invalid download directory: %s", o.Onboard.Download)
+	}
+
+	if !slices.Contains(validKexSuites, o.Onboard.Kex) {
+		return fmt.Errorf("invalid key exchange suite: '%s', options [%s]",
+			o.Onboard.Kex, strings.Join(validKexSuites, ", "))
+	}
+
+	if o.Onboard.MaxServiceInfoSize < 0 || o.Onboard.MaxServiceInfoSize > math.MaxUint16 {
 		return fmt.Errorf("max-serviceinfo-size must be between 0 and %d", math.MaxUint16)
 	}
 
-	for path := range uploads {
+	fsVarUploads = make(fsVar)
+	for _, path := range o.Onboard.Upload {
 		if !isValidPath(path) {
 			return fmt.Errorf("invalid upload path: %s", path)
 		}
@@ -609,10 +557,16 @@ func validateOnboardFlags() error {
 		if !fileExists(path) {
 			return fmt.Errorf("file doesn't exist: %s", path)
 		}
+
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("[%q]: %w", path, err)
+		}
+		fsVarUploads[pathToName(path, abs)] = abs
 	}
 
-	if wgetDir != "" && (!isValidPath(wgetDir) || !fileExists(wgetDir)) {
-		return fmt.Errorf("invalid wget directory: %s", wgetDir)
+	if o.Onboard.WgetDir != "" && (!isValidPath(o.Onboard.WgetDir) || !fileExists(o.Onboard.WgetDir)) {
+		return fmt.Errorf("invalid wget directory: %s", o.Onboard.WgetDir)
 	}
 
 	return nil

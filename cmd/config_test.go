@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,609 +12,967 @@ import (
 	"github.com/spf13/viper"
 )
 
-// resetState reinitializes the CLI/Config logic for testing
+type TestFullConfig struct {
+	FDOClientConfig  `mapstructure:",squash"`
+	DeviceInitConfig `mapstructure:"device-init"`
+	OnboardConfig    `mapstructure:"onboard"`
+}
+
+var capturedConfig *TestFullConfig
+
 func resetState(t *testing.T) {
 	t.Helper()
-
-	// Reset viper
 	viper.Reset()
 
-	// Reset root command flags
-	rootCmd.ResetFlags()
-	rootCmd.ResetCommands()
-	rootCmd.SetArgs(nil)
+	for _, cmd := range []*cobra.Command{rootCmd, onboardCmd, deviceInitCmd} {
+		cmd.ResetFlags()
+		cmd.ResetCommands()
+		cmd.SetArgs(nil)
+	}
 
-	// Reset device init command flags
-	deviceInitCmd.ResetFlags()
-	deviceInitCmd.ResetCommands()
-	deviceInitCmd.SetArgs(nil)
-
-	// Reset onboard command flags
-	onboardCmd.ResetFlags()
-	onboardCmd.ResetCommands()
-	onboardCmd.SetArgs(nil)
-
-	// Reinitialize flags
-	rootCmdInit()
-	deviceInitCmdInit()
-	onboardCmdInit()
-
-	// Reset global variables
-	debug = false
-	blobPath = ""
-	tpmPath = ""
 	configFile = ""
-	diURL = ""
-	diDeviceInfo = ""
-	diDeviceInfoMac = ""
-	diKey = ""
-	diKeyEnc = "x509"
-	insecureTLS = false
-	allowCredentialReuse = false
-	cipherSuite = "A128GCM"
-	dlDir = ""
-	echoCmds = false
-	kexSuite = ""
-	maxServiceInfoSize = 1300
-	resale = false
-	to2RetryDelay = 0
-	uploads = make(fsVar)
-	wgetDir = ""
+	rootConfig = FDOClientConfig{}
+	diConf = DeviceInitClientConfig{}
+	onboardConfig = OnboardClientConfig{}
+
+	rootCmdInit()
+	onboardCmdInit()
+	deviceInitCmdInit()
+	capturedConfig = nil
 }
 
-// stubDeviceInitRunE stubs out the device-init command execution but keeps config loading
-func stubDeviceInitRunE(t *testing.T) {
+func stubRunE(t *testing.T, cmd *cobra.Command) {
 	t.Helper()
-	orig := deviceInitCmd.RunE
-	deviceInitCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		// Positional argument takes highest precedence
-		if len(args) > 0 {
-			diURL = args[0]
-		} else if cmd.Flags().Changed("server-url") {
-			diURL = viper.GetString("device-init.server-url")
-		} else if viper.IsSet("device-init.server-url") {
-			diURL = viper.GetString("device-init.server-url")
+	orig := cmd.RunE
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		var fdoConfig TestFullConfig
+
+		if err := viper.Unmarshal(&fdoConfig); err != nil {
+			return err
 		}
 
-		// Load other config values from viper if not set via CLI
-		loadStringFromConfig(cmd, "key", "device-init.key", &diKey)
-		loadStringFromConfig(cmd, "key-enc", "device-init.key-enc", &diKeyEnc)
-		loadStringFromConfig(cmd, "device-info", "device-init.device-info", &diDeviceInfo)
-		loadStringFromConfig(cmd, "device-info-mac", "device-init.device-info-mac", &diDeviceInfoMac)
-		loadBoolFromConfig(cmd, "insecure-tls", "device-init.insecure-tls", &insecureTLS)
-		return nil
+		capturedConfig = &fdoConfig
+
+		return fdoConfig.validate()
 	}
-	t.Cleanup(func() { deviceInitCmd.RunE = orig })
+	t.Cleanup(func() { cmd.RunE = orig })
 }
 
-// stubOnboardRunE stubs out the onboard command execution but keeps config loading
-func stubOnboardRunE(t *testing.T) {
-	t.Helper()
-	orig := onboardCmd.RunE
-	onboardCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		// Load config values from viper if not set via CLI
-		loadStringFromConfig(cmd, "key", "onboard.key", &diKey)
-		loadStringFromConfig(cmd, "kex", "onboard.kex", &kexSuite)
-		loadStringFromConfig(cmd, "cipher", "onboard.cipher", &cipherSuite)
-		loadStringFromConfig(cmd, "download", "onboard.download", &dlDir)
-		loadBoolFromConfig(cmd, "echo-commands", "onboard.echo-commands", &echoCmds)
-		loadBoolFromConfig(cmd, "insecure-tls", "onboard.insecure-tls", &insecureTLS)
-		loadIntFromConfig(cmd, "max-serviceinfo-size", "onboard.max-serviceinfo-size", &maxServiceInfoSize)
-		loadBoolFromConfig(cmd, "allow-credential-reuse", "onboard.allow-credential-reuse", &allowCredentialReuse)
-		loadBoolFromConfig(cmd, "resale", "onboard.resale", &resale)
-		loadDurationFromConfig(cmd, "to2-retry-delay", "onboard.to2-retry-delay", &to2RetryDelay)
-		loadStringFromConfig(cmd, "wget-dir", "onboard.wget-dir", &wgetDir)
-		return nil
-	}
-	t.Cleanup(func() { onboardCmd.RunE = orig })
-}
-
-func writeYAMLConfig(t *testing.T, contents string) string {
+func writeConfig(t *testing.T, contents, ext string) string {
 	t.Helper()
 	dir := t.TempDir()
-	p := filepath.Join(dir, "config.yaml")
+	p := filepath.Join(dir, "config."+ext)
 	if err := os.WriteFile(p, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return p
 }
 
-func writeTOMLConfig(t *testing.T, contents string) string {
+func runTest(t *testing.T, cmd *cobra.Command, config, format string, args ...string) error {
 	t.Helper()
-	dir := t.TempDir()
-	p := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(p, []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-
-func TestConfigLoadYAML(t *testing.T) {
 	resetState(t)
-	stubDeviceInitRunE(t)
 
-	config := `
-debug: true
-blob: "test-cred.bin"
+	stubRunE(t, cmd)
+	path := writeConfig(t, config, format)
 
+	cmdArgs := append([]string{cmd.Name(), "--config", path}, args...)
+
+	rootCmd.SetArgs(cmdArgs)
+	return rootCmd.Execute()
+}
+
+func runCLI(t *testing.T, cmd *cobra.Command, args ...string) error {
+	t.Helper()
+	resetState(t)
+	stubRunE(t, cmd)
+	rootCmd.SetArgs(args)
+	return rootCmd.Execute()
+}
+
+func runTestBothFormats(t *testing.T, name string, cmd *cobra.Command, toml, yaml string, expectErr bool, args ...string) {
+	t.Helper()
+	for _, tc := range []struct{ name, config, ext string }{
+		{name + "/TOML", toml, "toml"},
+		{name + "/YAML", yaml, "yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := runTest(t, cmd, tc.config, tc.ext, args...)
+			if expectErr && err == nil {
+				t.Fatal("expected error")
+			}
+			if !expectErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidation_RequiredFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		command *cobra.Command
+		toml    string
+		yaml    string
+	}{
+		{"DI: missing blob/tpm", deviceInitCmd,
+			`key = "ec384"` + "\n[device-init]\nserver-url = \"https://127.0.0.1:8080\"",
+			"key: ec384\ndevice-init:\n  server-url: https://127.0.0.1:8080"},
+		{"DI: missing key", deviceInitCmd,
+			`blob = "cred.bin"` + "\n[device-init]\nserver-url = \"https://127.0.0.1:8080\"",
+			"blob: cred.bin\ndevice-init:\n  server-url: https://127.0.0.1:8080"},
+		{"DI: missing server-url", deviceInitCmd,
+			`blob = "cred.bin"` + "\nkey = \"ec384\"\n[device-init]",
+			"blob: cred.bin\nkey: ec384\ndevice-init: {}"},
+		{"OB: missing blob/tpm", onboardCmd,
+			`key = "ec384"` + "\n[onboard]\nkex = \"ECDH256\"\ncipher = \"A128GCM\"",
+			"key: ec384\nonboard:\n  kex: ECDH256\n  cipher: A128GCM"},
+		{"OB: missing key", onboardCmd,
+			`blob = "cred.bin"` + "\n[onboard]\nkex = \"ECDH256\"\ncipher = \"A128GCM\"",
+			"blob: cred.bin\nonboard:\n  kex: ECDH256\n  cipher: A128GCM"},
+		{"OB: missing kex", onboardCmd,
+			`blob = "cred.bin"` + "\nkey = \"ec384\"\n[onboard]\ncipher = \"A128GCM\"",
+			"blob: cred.bin\nkey: ec384\nonboard:\n  cipher: A128GCM"},
+	}
+	for _, tt := range tests {
+		runTestBothFormats(t, tt.name, tt.command, tt.toml, tt.yaml, true)
+	}
+}
+
+func TestValidation_InvalidValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		command *cobra.Command
+		toml    string
+		yaml    string
+	}{
+		{"invalid key type", deviceInitCmd,
+			`blob = "cred.bin"` + "\nkey = \"invalid\"\n[device-init]\nserver-url = \"https://127.0.0.1:8080\"",
+			"blob: cred.bin\nkey: invalid\ndevice-init:\n  server-url: https://127.0.0.1:8080"},
+		{"invalid key-enc", deviceInitCmd,
+			`blob = "cred.bin"` + "\nkey = \"ec384\"\n[device-init]\nserver-url = \"https://127.0.0.1:8080\"\nkey-enc = \"bad\"",
+			"blob: cred.bin\nkey: ec384\ndevice-init:\n  server-url: https://127.0.0.1:8080\n  key-enc: bad"},
+		{"invalid URL", deviceInitCmd,
+			`blob = "cred.bin"` + "\nkey = \"ec384\"\n[device-init]\nserver-url = \"not-a-url\"",
+			"blob: cred.bin\nkey: ec384\ndevice-init:\n  server-url: not-a-url"},
+		{"invalid kex", onboardCmd,
+			`blob = "cred.bin"` + "\nkey = \"ec384\"\n[onboard]\nkex = \"BAD_KEX\"\ncipher = \"A128GCM\"",
+			"blob: cred.bin\nkey: ec384\nonboard:\n  kex: BAD_KEX\n  cipher: A128GCM"},
+		{"invalid cipher", onboardCmd,
+			`blob = "cred.bin"` + "\nkey = \"ec384\"\n[onboard]\nkex = \"ECDH256\"\ncipher = \"BAD\"",
+			"blob: cred.bin\nkey: ec384\nonboard:\n  kex: ECDH256\n  cipher: BAD"},
+		{"invalid max-serviceinfo-size", onboardCmd,
+			`blob = "cred.bin"` + "\nkey = \"ec384\"\n[onboard]\nkex = \"ECDH256\"\ncipher = \"A128GCM\"\nmax-serviceinfo-size = 99999",
+			"blob: cred.bin\nkey: ec384\nonboard:\n  kex: ECDH256\n  cipher: A128GCM\n  max-serviceinfo-size: 99999"},
+	}
+	for _, tt := range tests {
+		runTestBothFormats(t, tt.name, tt.command, tt.toml, tt.yaml, true)
+	}
+}
+
+func TestDeviceInit_MutuallyExclusiveDeviceInfo(t *testing.T) {
+	t.Run("config file: both device-info and device-info-mac specified", func(t *testing.T) {
+		toml := `blob = "cred.bin"
+key = "ec384"
+
+[device-init]
+server-url = "https://127.0.0.1:8080"
+device-info = "custom-device"
+device-info-mac = "eth0"`
+
+		yaml := `blob: cred.bin
+key: ec384
 device-init:
-  server-url: "https://example.com:8080"
-  key: "ec384"
-  key-enc: "x5chain"
-  device-info: "test-device"
-  insecure-tls: true
-`
-	path := writeYAMLConfig(t, config)
-	rootCmd.SetArgs([]string{"device-init", "--config", path})
+  server-url: https://127.0.0.1:8080
+  device-info: custom-device
+  device-info-mac: eth0`
 
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+		runTestBothFormats(t, "both specified", deviceInitCmd, toml, yaml, true)
+	})
 
-	// Verify global config loaded
-	if !debug {
-		t.Error("expected debug to be true")
-	}
-	if blobPath != "test-cred.bin" {
-		t.Errorf("expected blob to be 'test-cred.bin', got %q", blobPath)
-	}
+	t.Run("config file: only device-info specified", func(t *testing.T) {
+		yaml := `blob: cred.bin
+key: ec384
+device-init:
+  server-url: https://127.0.0.1:8080
+  device-info: custom-device`
 
-	// Verify device-init config loaded
-	if diURL != "https://example.com:8080" {
-		t.Errorf("expected server-url to be 'https://example.com:8080', got %q", diURL)
-	}
-	if diKey != "ec384" {
-		t.Errorf("expected key to be 'ec384', got %q", diKey)
-	}
-	if diKeyEnc != "x5chain" {
-		t.Errorf("expected key-enc to be 'x5chain', got %q", diKeyEnc)
-	}
-	if diDeviceInfo != "test-device" {
-		t.Errorf("expected device-info to be 'test-device', got %q", diDeviceInfo)
-	}
-	if !insecureTLS {
-		t.Error("expected insecure-tls to be true")
+		if err := runTest(t, deviceInitCmd, yaml, "yaml"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got, want := capturedConfig.DeviceInitConfig.DeviceInfo, "custom-device"; got != want {
+			t.Errorf("DeviceInfo = %q, want %q", got, want)
+		}
+		if got := capturedConfig.DeviceInitConfig.DeviceInfoMac; got != "" {
+			t.Errorf("DeviceInfoMac = %q, want empty", got)
+		}
+	})
+
+	t.Run("config file: only device-info-mac specified", func(t *testing.T) {
+		yaml := `blob: cred.bin
+key: ec384
+device-init:
+  server-url: https://127.0.0.1:8080
+  device-info-mac: eth0`
+
+		if err := runTest(t, deviceInitCmd, yaml, "yaml"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got := capturedConfig.DeviceInitConfig.DeviceInfo; got != "" {
+			t.Errorf("DeviceInfo = %q, want empty", got)
+		}
+		if got, want := capturedConfig.DeviceInitConfig.DeviceInfoMac, "eth0"; got != want {
+			t.Errorf("DeviceInfoMac = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("CLI: both device-info and device-info-mac specified", func(t *testing.T) {
+		err := runCLI(t, deviceInitCmd, "device-init", "https://127.0.0.1:8080",
+			"--blob", "cred.bin", "--key", "ec384",
+			"--device-info", "custom-device", "--device-info-mac", "eth0")
+
+		if err == nil {
+			t.Fatal("expected error when both device-info and device-info-mac are specified")
+		}
+
+		expectedErr := "can't specify both --device-info and --device-info-mac"
+		if !strings.Contains(err.Error(), expectedErr) {
+			t.Errorf("error = %q, want error containing %q", err.Error(), expectedErr)
+		}
+	})
+
+	t.Run("CLI: only device-info specified", func(t *testing.T) {
+		if err := runCLI(t, deviceInitCmd, "device-init", "https://127.0.0.1:8080",
+			"--blob", "cred.bin", "--key", "ec384", "--device-info", "cli-device"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got, want := capturedConfig.DeviceInitConfig.DeviceInfo, "cli-device"; got != want {
+			t.Errorf("DeviceInfo = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("CLI: only device-info-mac specified", func(t *testing.T) {
+		if err := runCLI(t, deviceInitCmd, "device-init", "https://127.0.0.1:8080",
+			"--blob", "cred.bin", "--key", "ec384", "--device-info-mac", "eth0"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got, want := capturedConfig.DeviceInitConfig.DeviceInfoMac, "eth0"; got != want {
+			t.Errorf("DeviceInfoMac = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("CLI overrides config device-info", func(t *testing.T) {
+		yaml := `blob: cred.bin
+key: ec384
+device-init:
+  server-url: https://127.0.0.1:8080
+  device-info: config-device`
+
+		resetState(t)
+		stubRunE(t, deviceInitCmd)
+		path := writeConfig(t, yaml, "yaml")
+
+		rootCmd.SetArgs([]string{"device-init", "--config", path, "--device-info", "cli-device"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got, want := capturedConfig.DeviceInitConfig.DeviceInfo, "cli-device"; got != want {
+			t.Errorf("DeviceInfo = %q, want %q (CLI should override config)", got, want)
+		}
+	})
+
+	t.Run("config device-info + CLI device-info-mac", func(t *testing.T) {
+		yaml := `blob: cred.bin
+key: ec384
+device-init:
+  server-url: https://127.0.0.1:8080
+  device-info: config-device`
+
+		resetState(t)
+		stubRunE(t, deviceInitCmd)
+		path := writeConfig(t, yaml, "yaml")
+
+		rootCmd.SetArgs([]string{"device-init", "--config", path, "--device-info-mac", "eth0"})
+
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error when device-info in config and device-info-mac in CLI")
+		}
+
+		expectedErr := "can't specify both --device-info and --device-info-mac"
+		if !strings.Contains(err.Error(), expectedErr) {
+			t.Errorf("error = %q, want error containing %q", err.Error(), expectedErr)
+		}
+	})
+
+	t.Run("config device-info-mac + CLI device-info", func(t *testing.T) {
+		yaml := `blob: cred.bin
+key: ec384
+device-init:
+  server-url: https://127.0.0.1:8080
+  device-info-mac: eth0`
+
+		resetState(t)
+		stubRunE(t, deviceInitCmd)
+		path := writeConfig(t, yaml, "yaml")
+
+		rootCmd.SetArgs([]string{"device-init", "--config", path, "--device-info", "cli-device"})
+
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error when device-info-mac in config and device-info in CLI")
+		}
+
+		expectedErr := "can't specify both --device-info and --device-info-mac"
+		if !strings.Contains(err.Error(), expectedErr) {
+			t.Errorf("error = %q, want error containing %q", err.Error(), expectedErr)
+		}
+	})
+}
+
+func TestValidation_InvalidConfigFile(t *testing.T) {
+	for _, cmd := range []*cobra.Command{deviceInitCmd, onboardCmd} {
+		t.Run(cmd.Name(), func(t *testing.T) {
+			resetState(t)
+			stubRunE(t, cmd)
+
+			rootCmd.SetArgs([]string{cmd.Name(), "--config", "/no/such/file.toml"})
+
+			err := rootCmd.Execute()
+			if err == nil {
+				t.Fatalf("expected error for missing config file, got nil")
+			}
+		})
 	}
 }
 
-func TestConfigLoadTOML(t *testing.T) {
-	resetState(t)
-	stubDeviceInitRunE(t)
+func TestValidation_MalformedConfig(t *testing.T) {
+	t.Run("TOML", func(t *testing.T) {
+		err := runTest(t, deviceInitCmd, "this is [[[ not valid", "toml")
+		if err == nil {
+			t.Fatalf("expected error for malformed TOML, got nil")
+		}
+	})
+	t.Run("YAML", func(t *testing.T) {
+		err := runTest(t, onboardCmd, "bad:\n  indent\n    broken:", "yaml")
+		if err == nil {
+			t.Fatalf("expected error for malformed YAML, got nil")
+		}
+	})
+}
 
-	config := `
-debug = true
-blob = "test-cred.bin"
+func TestDeviceInit_ConfigFileLoading(t *testing.T) {
+	toml := `debug = true
+blob = "cred.bin"
+key = "ec384"
 
 [device-init]
 server-url = "https://example.com:8080"
-key = "ec256"
 key-enc = "cose"
-`
-	path := writeTOMLConfig(t, config)
-	rootCmd.SetArgs([]string{"device-init", "--config", path})
+device-info = "dev-1"
+insecure-tls = true`
 
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if diKey != "ec256" {
-		t.Errorf("expected key to be 'ec256', got %q", diKey)
-	}
-	if diKeyEnc != "cose" {
-		t.Errorf("expected key-enc to be 'cose', got %q", diKeyEnc)
-	}
-}
-
-func TestCLIOverridesConfig(t *testing.T) {
-	resetState(t)
-	stubDeviceInitRunE(t)
-
-	config := `
-debug: false
-blob: "config-cred.bin"
-
+	yaml := `debug: true
+blob: cred.bin
+key: ec384
 device-init:
-  server-url: "https://config.example.com:8080"
-  key: "ec384"
-  key-enc: "x509"
-`
-	path := writeYAMLConfig(t, config)
+  server-url: https://example.com:8080
+  key-enc: cose
+  device-info: dev-1
+  insecure-tls: true`
 
-	// CLI flags should override config values
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--config", path,
-		"--debug",
-		"--blob", "cli-cred.bin",
-		"--key", "ec256",
-		"https://cli.example.com:9090", // positional arg
-	})
+	runTestBothFormats(t, "", deviceInitCmd, toml, yaml, false)
 
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if got, want := capturedConfig.Debug, true; got != want {
+		t.Errorf("Debug = %v, want %v", got, want)
 	}
-
-	// CLI flags should take precedence
-	if !debug {
-		t.Error("expected debug to be true (from CLI)")
+	if got, want := capturedConfig.DeviceInitConfig.KeyEnc, "cose"; got != want {
+		t.Errorf("KeyEnc = %q, want %q", got, want)
 	}
-	if blobPath != "cli-cred.bin" {
-		t.Errorf("expected blob to be 'cli-cred.bin', got %q", blobPath)
+	if got, want := capturedConfig.DeviceInitConfig.DeviceInfo, "dev-1"; got != want {
+		t.Errorf("DeviceInfo = %q, want %q", got, want)
 	}
-	if diURL != "https://cli.example.com:9090" {
-		t.Errorf("expected server-url to be 'https://cli.example.com:9090', got %q", diURL)
-	}
-	if diKey != "ec256" {
-		t.Errorf("expected key to be 'ec256' (from CLI), got %q", diKey)
+	if got, want := capturedConfig.DeviceInitConfig.InsecureTLS, true; got != want {
+		t.Errorf("InsecureTLS = %v, want %v", got, want)
 	}
 }
 
-func TestPositionalArgOverridesConfigServerURL(t *testing.T) {
-	resetState(t)
-	stubDeviceInitRunE(t)
-
-	config := `
-blob: "cred.bin"
-
-device-init:
-  server-url: "https://config.example.com:8080"
-  key: "ec384"
-`
-	path := writeYAMLConfig(t, config)
-
-	// Positional arg should override config
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--config", path,
-		"https://positional.example.com:9999",
-	})
-
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if diURL != "https://positional.example.com:9999" {
-		t.Errorf("expected server-url to be 'https://positional.example.com:9999', got %q", diURL)
-	}
-}
-
-func TestOnboardConfigLoad(t *testing.T) {
-	resetState(t)
-	stubOnboardRunE(t)
-
-	config := `
-debug: true
-blob: "cred.bin"
-
-onboard:
-  key: "ec384"
-  kex: "ECDH384"
-  cipher: "A256GCM"
-  download: "/tmp/downloads"
-  echo-commands: true
-  insecure-tls: true
-  max-serviceinfo-size: 2000
-  allow-credential-reuse: true
-  resale: true
-  to2-retry-delay: "10s"
-  wget-dir: "/tmp/wget"
-  upload:
-    - "/tmp/file1"
-    - "/tmp/file2"
-`
-	path := writeYAMLConfig(t, config)
-	rootCmd.SetArgs([]string{"onboard", "--config", path})
-
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if diKey != "ec384" {
-		t.Errorf("expected key to be 'ec384', got %q", diKey)
-	}
-	if kexSuite != "ECDH384" {
-		t.Errorf("expected kex to be 'ECDH384', got %q", kexSuite)
-	}
-	if cipherSuite != "A256GCM" {
-		t.Errorf("expected cipher to be 'A256GCM', got %q", cipherSuite)
-	}
-	if !echoCmds {
-		t.Error("expected echo-commands to be true")
-	}
-	if !insecureTLS {
-		t.Error("expected insecure-tls to be true")
-	}
-	if maxServiceInfoSize != 2000 {
-		t.Errorf("expected max-serviceinfo-size to be 2000, got %d", maxServiceInfoSize)
-	}
-	if !allowCredentialReuse {
-		t.Error("expected allow-credential-reuse to be true")
-	}
-	if !resale {
-		t.Error("expected resale to be true")
-	}
-	if to2RetryDelay != 10*time.Second {
-		t.Errorf("expected to2-retry-delay to be 10s, got %v", to2RetryDelay)
-	}
-}
-
-func TestOnboardConfigLoadTOML(t *testing.T) {
-	resetState(t)
-	stubOnboardRunE(t)
-
-	config := `
-debug = true
+func TestOnboard_ConfigFileLoading(t *testing.T) {
+	toml := `debug = true
 blob = "cred.bin"
+key = "ec384"
 
 [onboard]
-key = "ec384"
 kex = "ECDH384"
 cipher = "A256GCM"
-download = "/tmp/downloads"
 echo-commands = true
 insecure-tls = true
 max-serviceinfo-size = 2000
 allow-credential-reuse = true
-resale = true
-to2-retry-delay = "10s"
-wget-dir = "/tmp/wget"
-`
-	path := writeTOMLConfig(t, config)
-	rootCmd.SetArgs([]string{"onboard", "--config", path})
+resale = true`
 
-	err := rootCmd.Execute()
-	if err != nil {
+	yaml := `debug: true
+blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH384
+  cipher: A256GCM
+  echo-commands: true
+  insecure-tls: true
+  max-serviceinfo-size: 2000
+  allow-credential-reuse: true
+  resale: true`
+
+	runTestBothFormats(t, "all options", onboardCmd, toml, yaml, false)
+
+	o := capturedConfig.OnboardConfig
+	if got, want := o.Kex, "ECDH384"; got != want {
+		t.Errorf("Kex = %q, want %q", got, want)
+	}
+	if got, want := o.Cipher, "A256GCM"; got != want {
+		t.Errorf("Cipher = %q, want %q", got, want)
+	}
+	if got, want := o.EchoCommands, true; got != want {
+		t.Errorf("EchoCommands = %v, want %v", got, want)
+	}
+	if got, want := o.MaxServiceInfoSize, 2000; got != want {
+		t.Errorf("MaxServiceInfoSize = %d, want %d", got, want)
+	}
+
+	toml = `blob = "cred.bin"
+key = "ec384"
+
+[onboard]
+kex = "ECDH256"
+cipher = "A128GCM"
+to2-retry-delay = "30s"`
+
+	yaml = `blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH256
+  cipher: A128GCM
+  to2-retry-delay: 30s`
+
+	runTestBothFormats(t, "TO2RetryDelay", onboardCmd, toml, yaml, false)
+
+	if got, want := capturedConfig.OnboardConfig.TO2RetryDelay, 30*time.Second; got != want {
+		t.Errorf("TO2RetryDelay = %v, want %v", got, want)
+	}
+}
+
+func TestDeviceInit_CLIOnly(t *testing.T) {
+	if err := runCLI(t, deviceInitCmd, "device-init", "https://127.0.0.1:8080", "--blob", "cred.bin", "--key", "ec384", "--key-enc", "cose"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if diKey != "ec384" {
-		t.Errorf("expected key to be 'ec384', got %q", diKey)
+	if got, want := capturedConfig.Blob, "cred.bin"; got != want {
+		t.Errorf("Blob = %q, want %q", got, want)
 	}
-	if kexSuite != "ECDH384" {
-		t.Errorf("expected kex to be 'ECDH384', got %q", kexSuite)
-	}
-	if cipherSuite != "A256GCM" {
-		t.Errorf("expected cipher to be 'A256GCM', got %q", cipherSuite)
-	}
-	if !echoCmds {
-		t.Error("expected echo-commands to be true")
-	}
-	if !insecureTLS {
-		t.Error("expected insecure-tls to be true")
-	}
-	if maxServiceInfoSize != 2000 {
-		t.Errorf("expected max-serviceinfo-size to be 2000, got %d", maxServiceInfoSize)
-	}
-	if !allowCredentialReuse {
-		t.Error("expected allow-credential-reuse to be true")
-	}
-	if !resale {
-		t.Error("expected resale to be true")
-	}
-	if to2RetryDelay != 10*time.Second {
-		t.Errorf("expected to2-retry-delay to be 10s, got %v", to2RetryDelay)
+	if got, want := capturedConfig.DeviceInitConfig.KeyEnc, "cose"; got != want {
+		t.Errorf("KeyEnc = %q, want %q", got, want)
 	}
 }
 
-func TestNoConfigFileRequired(t *testing.T) {
+func TestOnboard_CLIOnly(t *testing.T) {
+	if err := runCLI(t, onboardCmd, "onboard", "--blob", "cred.bin", "--key", "ec384", "--kex", "ECDH256", "--cipher", "A256GCM"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := capturedConfig.OnboardConfig.Kex, "ECDH256"; got != want {
+		t.Errorf("Kex = %q, want %q", got, want)
+	}
+	if got, want := capturedConfig.OnboardConfig.Cipher, "A256GCM"; got != want {
+		t.Errorf("Cipher = %q, want %q", got, want)
+	}
+}
+
+func TestDeviceInit_CLIOverridesConfig(t *testing.T) {
+	toml := `blob = "config.bin"
+key = "ec256"
+debug = false
+
+[device-init]
+server-url = "https://config.com:8080"
+key-enc = "x509"`
+
+	yaml := `blob: config.bin
+key: ec256
+debug: false
+device-init:
+  server-url: https://config.com:8080
+  key-enc: x509`
+
+	runTestBothFormats(t, "", deviceInitCmd, toml, yaml, false,
+		"https://cli.com:9090", "--blob", "cli.bin", "--key", "ec384", "--debug", "--key-enc", "cose", "--insecure-tls")
+
+	checks := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"Blob", capturedConfig.Blob, "cli.bin"},
+		{"Key", capturedConfig.Key, "ec384"},
+		{"Debug", capturedConfig.Debug, true},
+		{"ServerURL", capturedConfig.DeviceInitConfig.ServerURL, "https://cli.com:9090"},
+		{"KeyEnc", capturedConfig.DeviceInitConfig.KeyEnc, "cose"},
+		{"InsecureTLS", capturedConfig.DeviceInitConfig.InsecureTLS, true},
+	}
+
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
+	}
+}
+
+func TestOnboard_CLIOverridesConfig(t *testing.T) {
+	toml := `blob = "config.bin"
+key = "ec256"
+
+[onboard]
+kex = "ECDH256"
+cipher = "A128GCM"
+max-serviceinfo-size = 1300`
+
+	yaml := `blob: config.bin
+key: ec256
+onboard:
+  kex: ECDH256
+  cipher: A128GCM
+  max-serviceinfo-size: 1300`
+
+	runTestBothFormats(t, "", onboardCmd, toml, yaml, false,
+		"--blob", "cli.bin", "--key", "ec384", "--kex", "ECDH384", "--cipher", "A256GCM",
+		"--max-serviceinfo-size", "2000", "--echo-commands", "--resale")
+
+	o := capturedConfig.OnboardConfig
+	checks := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"Blob", capturedConfig.Blob, "cli.bin"},
+		{"Kex", o.Kex, "ECDH384"},
+		{"Cipher", o.Cipher, "A256GCM"},
+		{"MaxServiceInfoSize", o.MaxServiceInfoSize, 2000},
+		{"EchoCommands", o.EchoCommands, true},
+		{"Resale", o.Resale, true},
+	}
+
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
+	}
+}
+
+func TestDeviceInit_CLIAndConfigWithDefaults(t *testing.T) {
+	yaml := `blob: cred.bin
+key: ec384
+device-init:
+  server-url: https://example.com:8080`
+
 	resetState(t)
-	stubDeviceInitRunE(t)
+	stubRunE(t, deviceInitCmd)
+	path := writeConfig(t, yaml, "yaml")
 
-	// Should work without config file, using only CLI flags
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--blob", "cred.bin",
-		"--key", "ec384",
-		"https://example.com:8080",
-	})
+	// CLI provides debug and device-info, but NOT key-enc or insecure-tls
+	rootCmd.SetArgs([]string{"device-init", "--config", path, "--debug", "--device-info", "test-device"})
 
-	err := rootCmd.Execute()
-	if err != nil {
+	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if blobPath != "cred.bin" {
-		t.Errorf("expected blob to be 'cred.bin', got %q", blobPath)
+	// Verify CLI values
+	if got, want := capturedConfig.Debug, true; got != want {
+		t.Errorf("Debug = %v, want %v (from CLI)", got, want)
 	}
-	if diKey != "ec384" {
-		t.Errorf("expected key to be 'ec384', got %q", diKey)
+	if got, want := capturedConfig.DeviceInitConfig.DeviceInfo, "test-device"; got != want {
+		t.Errorf("DeviceInfo = %q, want %q (from CLI)", got, want)
 	}
-	if diURL != "https://example.com:8080" {
-		t.Errorf("expected server-url to be 'https://example.com:8080', got %q", diURL)
-	}
-}
 
-func TestConfigFileNotFoundError(t *testing.T) {
-	resetState(t)
-
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--config", "/nonexistent/config.yaml",
-		"--blob", "cred.bin",
-		"--key", "ec384",
-		"https://example.com:8080",
-	})
-
-	err := rootCmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for nonexistent config file")
+	// Verify config values
+	if got, want := capturedConfig.Blob, "cred.bin"; got != want {
+		t.Errorf("Blob = %q, want %q (from config)", got, want)
 	}
-	if !strings.Contains(err.Error(), "failed to read config file") {
-		t.Errorf("expected error to contain 'failed to read config file', got: %v", err)
+	if got, want := capturedConfig.DeviceInitConfig.ServerURL, "https://example.com:8080"; got != want {
+		t.Errorf("ServerURL = %q, want %q (from config)", got, want)
+	}
+
+	// Verify defaults (not in config or CLI)
+	if got, want := capturedConfig.DeviceInitConfig.KeyEnc, "x509"; got != want {
+		t.Errorf("KeyEnc = %q, want %q (DEFAULT)", got, want)
+	}
+	if got, want := capturedConfig.DeviceInitConfig.InsecureTLS, false; got != want {
+		t.Errorf("InsecureTLS = %v, want %v (DEFAULT)", got, want)
+	}
+	if got, want := capturedConfig.DeviceInitConfig.DeviceInfoMac, ""; got != want {
+		t.Errorf("DeviceInfoMac = %q, want %q (DEFAULT)", got, want)
 	}
 }
 
-func TestMissingBlobOrTPM(t *testing.T) {
+func TestOnboard_CLIAndConfigWithDefaults(t *testing.T) {
+	yaml := `blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH256`
+
 	resetState(t)
+	stubRunE(t, onboardCmd)
+	path := writeConfig(t, yaml, "yaml")
 
-	config := `
-debug: true
+	// CLI provides echo-commands and max-serviceinfo-size, but NOT cipher, insecure-tls, resale
+	rootCmd.SetArgs([]string{"onboard", "--config", path, "--echo-commands", "--max-serviceinfo-size", "2000"})
 
-device-init:
-  server-url: "https://example.com:8080"
-  key: "ec384"
-`
-	path := writeYAMLConfig(t, config)
-
-	// Neither blob nor tpm specified
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--config", path,
-	})
-
-	err := rootCmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when neither blob nor tpm is specified")
-	}
-	if !strings.Contains(err.Error(), "either --blob or --tpm must be specified") {
-		t.Errorf("expected error to contain 'either --blob or --tpm must be specified', got: %v", err)
-	}
-}
-
-func TestMissingRequiredServerURL(t *testing.T) {
-	resetState(t)
-
-	config := `
-blob: "cred.bin"
-
-device-init:
-  key: "ec384"
-`
-	path := writeYAMLConfig(t, config)
-
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--config", path,
-	})
-
-	err := rootCmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when server-url is missing")
-	}
-	if !strings.Contains(err.Error(), "server-url is required") {
-		t.Errorf("expected error to contain 'server-url is required', got: %v", err)
-	}
-}
-
-func TestMissingRequiredKey(t *testing.T) {
-	resetState(t)
-
-	config := `
-blob: "cred.bin"
-
-device-init:
-  server-url: "https://example.com:8080"
-`
-	path := writeYAMLConfig(t, config)
-
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--config", path,
-	})
-
-	err := rootCmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when key is missing")
-	}
-	if !strings.Contains(err.Error(), "--key is required") {
-		t.Errorf("expected error to contain '--key is required', got: %v", err)
-	}
-}
-
-func TestMissingRequiredKeyCLI(t *testing.T) {
-	resetState(t)
-
-	// Test missing key via CLI (no config file)
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--blob", "cred.bin",
-		"https://example.com:8080",
-	})
-
-	err := rootCmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when --key is not provided via CLI")
-	}
-	if !strings.Contains(err.Error(), "--key is required") {
-		t.Errorf("expected error to contain '--key is required', got: %v", err)
-	}
-}
-
-func TestTPMFromConfig(t *testing.T) {
-	resetState(t)
-	stubDeviceInitRunE(t)
-
-	config := `
-debug: true
-tpm: "/dev/tpm0"
-
-device-init:
-  server-url: "https://example.com:8080"
-  key: "ec384"
-`
-	path := writeYAMLConfig(t, config)
-	rootCmd.SetArgs([]string{"device-init", "--config", path})
-
-	err := rootCmd.Execute()
-	if err != nil {
+	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if tpmPath != "/dev/tpm0" {
-		t.Errorf("expected tpm to be '/dev/tpm0', got %q", tpmPath)
+	o := capturedConfig.OnboardConfig
+
+	// Verify CLI values
+	if got, want := o.EchoCommands, true; got != want {
+		t.Errorf("EchoCommands = %v, want %v (from CLI)", got, want)
 	}
-	if blobPath != "" {
-		t.Errorf("expected blob to be empty, got %q", blobPath)
+	if got, want := o.MaxServiceInfoSize, 2000; got != want {
+		t.Errorf("MaxServiceInfoSize = %d, want %d (from CLI)", got, want)
+	}
+
+	// Verify config values
+	if got, want := capturedConfig.Blob, "cred.bin"; got != want {
+		t.Errorf("Blob = %q, want %q (from config)", got, want)
+	}
+	if got, want := o.Kex, "ECDH256"; got != want {
+		t.Errorf("Kex = %q, want %q (from config)", got, want)
+	}
+
+	// Verify defaults (not in config or CLI)
+	if got, want := o.Cipher, "A128GCM"; got != want {
+		t.Errorf("Cipher = %q, want %q (DEFAULT)", got, want)
+	}
+	if got, want := o.InsecureTLS, false; got != want {
+		t.Errorf("InsecureTLS = %v, want %v (DEFAULT)", got, want)
+	}
+	if got, want := o.Resale, false; got != want {
+		t.Errorf("Resale = %v, want %v (DEFAULT)", got, want)
+	}
+	if got, want := o.AllowCredentialReuse, false; got != want {
+		t.Errorf("AllowCredentialReuse = %v, want %v (DEFAULT)", got, want)
+	}
+	if got, want := o.EnableInteropTest, false; got != want {
+		t.Errorf("EnableInteropTest = %v, want %v (DEFAULT)", got, want)
 	}
 }
 
-func TestMutuallyExclusiveDeviceInfoFlags(t *testing.T) {
-	resetState(t)
+func TestDeviceInit_PositionalArgOverridesServerURL(t *testing.T) {
+	toml := `blob = "cred.bin"
+key = "ec384"
 
-	config := `
-blob: "cred.bin"
+[device-init]
+server-url = "https://config.com:8080"`
 
+	yaml := `blob: cred.bin
+key: ec384
 device-init:
-  server-url: "https://example.com:8080"
-  key: "ec384"
-  device-info: "custom-device-info"
-  device-info-mac: "eth0"
-`
-	path := writeYAMLConfig(t, config)
-	rootCmd.SetArgs([]string{"device-init", "--config", path})
+  server-url: https://config.com:8080`
 
-	err := rootCmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when both device-info and device-info-mac are specified")
-	}
-	if !strings.Contains(err.Error(), "device-info") || !strings.Contains(err.Error(), "device-info-mac") {
-		t.Errorf("expected error to mention both device-info and device-info-mac, got: %v", err)
+	runTestBothFormats(t, "", deviceInitCmd, toml, yaml, false, "https://positional.com:9090")
+
+	if got, want := capturedConfig.DeviceInitConfig.ServerURL, "https://positional.com:9090"; got != want {
+		t.Errorf("ServerURL = %q, want %q", got, want)
 	}
 }
 
-func TestMutuallyExclusiveDeviceInfoFlagsCLI(t *testing.T) {
-	resetState(t)
+func TestDeviceInit_Defaults(t *testing.T) {
+	toml := `blob = "cred.bin"
+key = "ec384"
 
-	// Test via CLI flags
-	rootCmd.SetArgs([]string{
-		"device-init",
-		"--blob", "cred.bin",
-		"--key", "ec384",
-		"--device-info", "custom-info",
-		"--device-info-mac", "eth0",
-		"https://example.com:8080",
+[device-init]
+server-url = "https://127.0.0.1:8080"`
+
+	yaml := `blob: cred.bin
+key: ec384
+device-init:
+  server-url: https://127.0.0.1:8080`
+
+	runTestBothFormats(t, "", deviceInitCmd, toml, yaml, false)
+
+	if got, want := capturedConfig.Debug, false; got != want {
+		t.Errorf("Debug = %v, want %v", got, want)
+	}
+	if got, want := capturedConfig.DeviceInitConfig.KeyEnc, "x509"; got != want {
+		t.Errorf("KeyEnc = %q, want %q", got, want)
+	}
+	if got, want := capturedConfig.DeviceInitConfig.InsecureTLS, false; got != want {
+		t.Errorf("InsecureTLS = %v, want %v", got, want)
+	}
+}
+
+func TestOnboard_Defaults(t *testing.T) {
+	toml := `blob = "cred.bin"
+key = "ec384"
+
+[onboard]
+kex = "ECDH256"`
+
+	yaml := `blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH256`
+
+	runTestBothFormats(t, "", onboardCmd, toml, yaml, false)
+
+	o := capturedConfig.OnboardConfig
+	if got, want := o.Cipher, "A128GCM"; got != want {
+		t.Errorf("Cipher = %q, want %q", got, want)
+	}
+	if got, want := o.MaxServiceInfoSize, 1300; got != want {
+		t.Errorf("MaxServiceInfoSize = %d, want %d", got, want)
+	}
+	if got, want := o.InsecureTLS, false; got != want {
+		t.Errorf("InsecureTLS = %v, want %v", got, want)
+	}
+	if got, want := o.EchoCommands, false; got != want {
+		t.Errorf("EchoCommands = %v, want %v", got, want)
+	}
+	if got, want := o.Resale, false; got != want {
+		t.Errorf("Resale = %v, want %v", got, want)
+	}
+}
+
+func TestDeviceInit_URLEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"hostname too long", "https://" + strings.Repeat("a", 256) + ":8080"},
+		{"invalid hostname", "https://inval!d:8080"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := fmt.Sprintf("blob: cred.bin\nkey: ec384\ndevice-init:\n  server-url: %s", tt.url)
+			if err := runTest(t, deviceInitCmd, yaml, "yaml"); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestOnboard_MaxServiceInfoSizeBoundaries(t *testing.T) {
+	tests := []struct {
+		value   string
+		wantErr bool
+	}{
+		{"0", false},
+		{"65535", false},
+		{"-1", true},
+		{"65536", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			yaml := "blob: cred.bin\nkey: ec384\nonboard:\n  kex: ECDH256\n  cipher: A128GCM\n  max-serviceinfo-size: " + tt.value
+			err := runTest(t, onboardCmd, yaml, "yaml")
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestOnboard_DirectoryValidation(t *testing.T) {
+	validDir := t.TempDir()
+	tests := []struct {
+		name    string
+		field   string
+		value   string
+		wantErr bool
+	}{
+		{"valid download", "download", validDir, false},
+		{"invalid download", "download", "/nonexistent", true},
+		{"valid wget-dir", "wget-dir", validDir, false},
+		{"invalid wget-dir", "wget-dir", "/nonexistent", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := fmt.Sprintf("blob: cred.bin\nkey: ec384\nonboard:\n  kex: ECDH256\n  cipher: A128GCM\n  %s: %s", tt.field, tt.value)
+			err := runTest(t, onboardCmd, yaml, "yaml")
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestOnboard_UploadFlag(t *testing.T) {
+	t.Run("CLI with valid upload path", func(t *testing.T) {
+		validFile := filepath.Join(t.TempDir(), "upload.txt")
+		if err := os.WriteFile(validFile, []byte("test"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := runCLI(t, onboardCmd, "onboard", "--blob", "cred.bin", "--key", "ec384",
+			"--kex", "ECDH256", "--cipher", "A128GCM", "--upload", validFile); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got := len(onboardConfig.Onboard.Upload); got != 1 {
+			t.Errorf("Upload count = %d, want 1", got)
+		}
 	})
 
-	err := rootCmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when both --device-info and --device-info-mac CLI flags are specified")
-	}
-	if !strings.Contains(err.Error(), "device-info") || !strings.Contains(err.Error(), "device-info-mac") {
-		t.Errorf("expected error to mention both device-info and device-info-mac, got: %v", err)
-	}
+	t.Run("CLI with invalid upload path", func(t *testing.T) {
+		err := runCLI(t, onboardCmd, "onboard", "--blob", "cred.bin", "--key", "ec384",
+			"--kex", "ECDH256", "--cipher", "A128GCM", "--upload", "/nonexistent/file.txt")
+		if err == nil {
+			t.Fatalf("expected error for invalid upload path, got nil")
+		}
+	})
+
+	t.Run("CLI with multiple upload paths", func(t *testing.T) {
+		dir := t.TempDir()
+		file1 := filepath.Join(dir, "file1.txt")
+		file2 := filepath.Join(dir, "file2.txt")
+		if err := os.WriteFile(file1, []byte("test1"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file2, []byte("test2"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := runCLI(t, onboardCmd, "onboard", "--blob", "cred.bin", "--key", "ec384",
+			"--kex", "ECDH256", "--cipher", "A128GCM", "--upload", file1, "--upload", file2); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got := len(onboardConfig.Onboard.Upload); got != 2 {
+			t.Errorf("Upload count = %d, want 2", got)
+		}
+	})
+}
+
+func TestOnboard_UploadViaConfig(t *testing.T) {
+	t.Run("single file via YAML", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "upload.txt")
+		if err := os.WriteFile(file, []byte("test"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		yaml := fmt.Sprintf(`blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH256
+  cipher: A128GCM
+  upload:
+    - %s`, file)
+
+		if err := runTest(t, onboardCmd, yaml, "yaml"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got := len(capturedConfig.OnboardConfig.Upload); got != 1 {
+			t.Errorf("Upload count = %d, want 1", got)
+		}
+	})
+
+	t.Run("multiple files via YAML", func(t *testing.T) {
+		dir := t.TempDir()
+		file1 := filepath.Join(dir, "file1.txt")
+		file2 := filepath.Join(dir, "file2.txt")
+		if err := os.WriteFile(file1, []byte("test1"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file2, []byte("test2"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		yaml := fmt.Sprintf(`blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH256
+  cipher: A128GCM
+  upload:
+    - %s
+    - %s`, file1, file2)
+
+		if err := runTest(t, onboardCmd, yaml, "yaml"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got := len(capturedConfig.OnboardConfig.Upload); got != 2 {
+			t.Errorf("Upload count = %d, want 2", got)
+		}
+	})
+
+	t.Run("invalid path via YAML", func(t *testing.T) {
+		yaml := `blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH256
+  cipher: A128GCM
+  upload:
+    - /nonexistent/file.txt`
+
+		err := runTest(t, onboardCmd, yaml, "yaml")
+		if err == nil {
+			t.Fatal("expected error for nonexistent upload file")
+		}
+	})
+
+	t.Run("CLI overrides config", func(t *testing.T) {
+		dir := t.TempDir()
+		configFile := filepath.Join(dir, "config-upload.txt")
+		cliFile := filepath.Join(dir, "cli-upload.txt")
+		if err := os.WriteFile(configFile, []byte("from config"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(cliFile, []byte("from cli"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		yaml := fmt.Sprintf(`blob: cred.bin
+key: ec384
+onboard:
+  kex: ECDH256
+  cipher: A128GCM
+  upload:
+    - %s`, configFile)
+
+		resetState(t)
+		stubRunE(t, onboardCmd)
+		path := writeConfig(t, yaml, "yaml")
+
+		rootCmd.SetArgs([]string{"onboard", "--config", path, "--upload", cliFile})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// CLI should override config (only CLI file present)
+		if got := len(onboardConfig.Onboard.Upload); got != 1 {
+			t.Errorf("Upload count = %d, want 1 (CLI overrides config)", got)
+		}
+
+		// Verify it's the CLI file, not the config file
+		found := false
+		for _, path := range onboardConfig.Onboard.Upload {
+			if strings.Contains(path, "cli-upload.txt") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("Expected CLI upload file, but it's not present")
+		}
+	})
 }

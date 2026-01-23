@@ -16,12 +16,12 @@ var printCmd = &cobra.Command{
 	Use:   "print",
 	Short: "Print device credential blob and exit",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if debug {
+		if rootConfig.Debug {
 			level.Set(slog.LevelDebug)
 		}
-		if tpmPath != "" {
+		if rootConfig.TPM != "" {
 			var err error
-			tpmc, err = tpm_utils.TpmOpen(tpmPath)
+			tpmc, err = tpm_utils.TpmOpen(rootConfig.TPM)
 			if err != nil {
 				return err
 			}
@@ -32,8 +32,8 @@ var printCmd = &cobra.Command{
 			}
 			fmt.Printf("%+v\n", tpmCred)
 		} else {
-			if !isValidPath(blobPath) {
-				return fmt.Errorf("invalid blob path: %s", blobPath)
+			if !isValidPath(rootConfig.Blob) {
+				return fmt.Errorf("invalid blob path: %s", rootConfig.Blob)
 			}
 			var fileCred fdoDeviceCredential
 			if err := readCredFile(&fileCred); err != nil {

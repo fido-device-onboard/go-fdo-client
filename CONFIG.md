@@ -23,7 +23,7 @@ go-fdo-client device-init --config config.yaml --key ec256 https://example.com:8
 
 The configuration file uses a hierarchical structure:
 
-- Global options (`debug`, `blob`, `tpm`) - apply to all commands
+- Global options (`debug`, `blob`, `tpm`, `key`) - apply to all commands
 - `device-init` - Device initialization specific configuration
 - `onboard` - Onboarding (TO1/TO2) specific configuration
 
@@ -34,8 +34,9 @@ The configuration file uses a hierarchical structure:
 | `debug` | boolean | Enable debug logging (print HTTP contents) | false |
 | `blob` | string | File path of device credential blob | - |
 | `tpm` | string | TPM device path for device credential secrets | - |
+| `key` | string | Key type for device credential. Options: `ec256`, `ec384`, `rsa2048`, `rsa3072` | - |
 
-**Note**: Either `blob` or `tpm` must be specified (via config file or CLI flag).
+**Note**: Either `blob` or `tpm` must be specified (via config file or CLI flag). The `key` option is required for `device-init` and `onboard` commands.
 
 ## Device Initialization Configuration
 
@@ -44,7 +45,6 @@ The device initialization configuration is under the `device-init` section:
 | Key | Type | Description | Required |
 |-----|------|-------------|----------|
 | `server-url` | string | DI server URL (e.g., `https://manufacturing.example.com:8080`) | Yes |
-| `key` | string | Key type for device credential. Options: `ec256`, `ec384`, `rsa2048`, `rsa3072` | Yes |
 | `key-enc` | string | Public key encoding. Options: `x509`, `x5chain`, `cose` | No (default: `x509`) |
 | `device-info` | string | Custom device information for credentials | No |
 | `device-info-mac` | string | MAC address interface name (e.g., `eth0`) for device info | No |
@@ -58,11 +58,11 @@ The onboarding configuration is under the `onboard` section:
 
 | Key | Type | Description | Required |
 |-----|------|-------------|----------|
-| `key` | string | Key type for device credential. Options: `ec256`, `ec384`, `rsa2048`, `rsa3072` | Yes |
 | `kex` | string | Key exchange suite. Options: `DHKEXid14`, `DHKEXid15`, `ASYMKEX2048`, `ASYMKEX3072`, `ECDH256`, `ECDH384` | Yes |
 | `cipher` | string | Cipher suite for encryption. Options: `A128GCM`, `A192GCM`, `A256GCM`, `AES-CCM-64-128-128`, `AES-CCM-64-128-256`, `COSEAES128CBC`, `COSEAES128CTR`, `COSEAES256CBC`, `COSEAES256CTR` | No (default: `A128GCM`) |
 | `download` | string | Directory to download files into (FSIM disabled if empty) | No |
 | `echo-commands` | boolean | Echo all commands received to stdout (FSIM disabled if false) | No (default: false) |
+| `enable-interop-test` | boolean | Enable FIDO Alliance interop test module | No (default: false) |
 | `insecure-tls` | boolean | Skip TLS certificate verification | No (default: false) |
 | `max-serviceinfo-size` | integer | Maximum service info size to receive (0-65535) | No (default: 1300) |
 | `allow-credential-reuse` | boolean | Allow credential reuse protocol during onboarding | No (default: false) |
@@ -78,20 +78,20 @@ The onboarding configuration is under the `onboard` section:
 ```yaml
 debug: true
 blob: "cred.bin"
+key: "ec384"
 
 device-init:
   server-url: "https://manufacturing.example.com:8080"
-  key: "ec384"
   key-enc: "x509"
   device-info: "device-001"
   insecure-tls: false
 
 onboard:
-  key: "ec384"
   kex: "ECDH384"
   cipher: "A256GCM"
   download: "/tmp/downloads"
   echo-commands: false
+  enable-interop-test: false
   insecure-tls: false
   max-serviceinfo-size: 1300
   allow-credential-reuse: false
@@ -108,20 +108,20 @@ onboard:
 ```toml
 debug = true
 blob = "cred.bin"
+key = "ec384"
 
 [device-init]
 server-url = "https://manufacturing.example.com:8080"
-key = "ec384"
 key-enc = "x509"
 device-info = "device-001"
 insecure-tls = false
 
 [onboard]
-key = "ec384"
 kex = "ECDH384"
 cipher = "A256GCM"
 download = "/tmp/downloads"
 echo-commands = false
+enable-interop-test = false
 insecure-tls = false
 max-serviceinfo-size = 1300
 allow-credential-reuse = false

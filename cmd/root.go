@@ -15,12 +15,10 @@ import (
 )
 
 var (
-	debug         bool
-	blobPath      string
 	tpmc          tpm.Closer
-	tpmPath       string
 	clientContext context.Context
 	configFile    string
+	rootConfig    FDOClientConfig
 )
 
 var rootCmd = &cobra.Command{
@@ -39,18 +37,22 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
-		// Update global variables from viper (config file values if not set via CLI)
-		loadStringFromConfig(cmd, "blob", "blob", &blobPath)
-		loadStringFromConfig(cmd, "tpm", "tpm", &tpmPath)
-		loadBoolFromConfig(cmd, "debug", "debug", &debug)
-
-		// Validate that at least one of blob or tpm is set
-		if blobPath == "" && tpmPath == "" {
-			return fmt.Errorf("either --blob or --tpm must be specified (via CLI or config file)")
+		err := viper.Unmarshal(&rootConfig)
+		if err != nil {
+			return err
 		}
 
-		return nil
+		return rootConfig.validate()
 	},
+}
+
+func (f *FDOClientConfig) validate() error {
+	// Validate that at least one of blob or tpm is set
+	if f.Blob == "" && f.TPM == "" {
+		return fmt.Errorf("either --blob or --tpm must be specified (via CLI or config file)")
+	}
+
+	return nil
 }
 
 // Called by main to parse the command line and execute the subcommand
@@ -80,9 +82,10 @@ func Execute() error {
 func rootCmdInit() {
 	pflags := rootCmd.PersistentFlags()
 	pflags.StringVar(&configFile, "config", "", "Path to configuration file (YAML or TOML)")
-	pflags.StringVar(&blobPath, "blob", "", "File path of device credential blob")
-	pflags.BoolVar(&debug, "debug", false, "Print HTTP contents")
-	pflags.StringVar(&tpmPath, "tpm", "", "Use a TPM at path for device credential secrets")
+	pflags.StringVar(&rootConfig.Blob, "blob", "", "File path of device credential blob")
+	pflags.BoolVar(&rootConfig.Debug, "debug", false, "Print HTTP contents")
+	pflags.StringVar(&rootConfig.TPM, "tpm", "", "Use a TPM at path for device credential secrets")
+	pflags.StringVar(&rootConfig.Key, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 
 	// Bind global flags to viper
 	if err := viper.BindPFlag("blob", pflags.Lookup("blob")); err != nil {
@@ -92,6 +95,9 @@ func rootCmdInit() {
 		panic(err)
 	}
 	if err := viper.BindPFlag("tpm", pflags.Lookup("tpm")); err != nil {
+		panic(err)
+	}
+	if err := viper.BindPFlag("key", pflags.Lookup("key")); err != nil {
 		panic(err)
 	}
 }
