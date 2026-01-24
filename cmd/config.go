@@ -46,6 +46,7 @@ type DeviceInitConfig struct {
 	DeviceInfo    string `mapstructure:"device-info"`
 	DeviceInfoMac string `mapstructure:"device-info-mac"`
 	InsecureTLS   bool   `mapstructure:"insecure-tls"`
+	SerialNumber  string `mapstructure:"serial-number"`
 }
 
 type OnboardConfig struct {

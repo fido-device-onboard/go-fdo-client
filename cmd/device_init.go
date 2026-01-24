@@ -176,12 +176,12 @@ func doDI() (err error) { //nolint:gocyclo
 
 	// If serial # is not provided, it will be gathered from system
 	var serialNumber string
-	if diSerialNumber == "" {
+	if diConf.DeviceInit.SerialNumber == "" {
 		serialNumber, err = getSerial()
 		if err != nil {
 			slog.Warn("error getting device serial number", "error", err)
 		}
-		diSerialNumber = serialNumber
+		diConf.DeviceInit.SerialNumber = serialNumber
 	}
 
 	var keyEncoding protocol.KeyEncoding
@@ -206,7 +206,7 @@ func doDI() (err error) { //nolint:gocyclo
 			return fmt.Errorf("error getting device information from iface %s: %w", diConf.DeviceInit.DeviceInfoMac, err)
 		}
 	default:
-		deviceInfo = diSerialNumber
+		deviceInfo = diConf.DeviceInit.SerialNumber
 		if deviceInfo == "" {
 			return fmt.Errorf("device info cannot be determined automatically. " +
 				"Please specify either:\n" +
@@ -215,12 +215,12 @@ func doDI() (err error) { //nolint:gocyclo
 				"  or both flags")
 		}
 	}
-	slog.Debug("Starting Device Initialization", "Serial Number", diSerialNumber, "Device Info", deviceInfo)
+	slog.Debug("Starting Device Initialization", "Serial Number", diConf.DeviceInit.SerialNumber, "Device Info", deviceInfo)
 
 	cred, err := fdo.DI(context.TODO(), tls.TlsTransport(diConf.DeviceInit.ServerURL, nil, diConf.DeviceInit.InsecureTLS), custom.DeviceMfgInfo{
 		KeyType:      keyType,
 		KeyEncoding:  keyEncoding,
-		SerialNumber: diSerialNumber,
+		SerialNumber: diConf.DeviceInit.SerialNumber,
 		DeviceInfo:   deviceInfo,
 		CertInfo:     cbor.X509CertificateRequest(*csr),
 	}, fdo.DIConfig{

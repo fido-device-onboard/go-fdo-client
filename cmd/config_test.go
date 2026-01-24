@@ -375,7 +375,8 @@ key = "ec384"
 server-url = "https://example.com:8080"
 key-enc = "cose"
 device-info = "dev-1"
-insecure-tls = true`
+insecure-tls = true
+serial-number = "serial123"`
 
 	yaml := `debug: true
 blob: cred.bin
@@ -384,7 +385,8 @@ device-init:
   server-url: https://example.com:8080
   key-enc: cose
   device-info: dev-1
-  insecure-tls: true`
+  insecure-tls: true
+  serial-number: serial123`
 
 	runTestBothFormats(t, "", deviceInitCmd, toml, yaml, false)
 
@@ -399,6 +401,9 @@ device-init:
 	}
 	if got, want := capturedConfig.DeviceInitConfig.InsecureTLS, true; got != want {
 		t.Errorf("InsecureTLS = %v, want %v", got, want)
+	}
+	if got, want := capturedConfig.DeviceInitConfig.SerialNumber, "serial123"; got != want {
+		t.Errorf("SerialNumber = %v, want %v", got, want)
 	}
 }
 
@@ -467,7 +472,8 @@ onboard:
 }
 
 func TestDeviceInit_CLIOnly(t *testing.T) {
-	if err := runCLI(t, deviceInitCmd, "device-init", "https://127.0.0.1:8080", "--blob", "cred.bin", "--key", "ec384", "--key-enc", "cose"); err != nil {
+	if err := runCLI(t, deviceInitCmd, "device-init", "https://127.0.0.1:8080", "--blob", "cred.bin", "--key",
+		"ec384", "--key-enc", "cose", "--serial-number", "serial456"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -476,6 +482,9 @@ func TestDeviceInit_CLIOnly(t *testing.T) {
 	}
 	if got, want := capturedConfig.DeviceInitConfig.KeyEnc, "cose"; got != want {
 		t.Errorf("KeyEnc = %q, want %q", got, want)
+	}
+	if got, want := capturedConfig.DeviceInitConfig.SerialNumber, "serial456"; got != want {
+		t.Errorf("SerialNumber = %q, want %q", got, want)
 	}
 }
 
@@ -498,17 +507,20 @@ debug = false
 
 [device-init]
 server-url = "https://config.com:8080"
-key-enc = "x509"`
+key-enc = "x509"
+serial-number = "notthisserial1"`
 
 	yaml := `blob: config.bin
 key: ec256
 debug: false
 device-init:
   server-url: https://config.com:8080
-  key-enc: x509`
+  key-enc: x509
+  serial-number: notthisserial1`
 
 	runTestBothFormats(t, "", deviceInitCmd, toml, yaml, false,
-		"https://cli.com:9090", "--blob", "cli.bin", "--key", "ec384", "--debug", "--key-enc", "cose", "--insecure-tls")
+		"https://cli.com:9090", "--blob", "cli.bin", "--key", "ec384", "--debug", "--key-enc", "cose",
+		"--insecure-tls", "--serial-number", "serial100")
 
 	checks := []struct {
 		name string
@@ -521,6 +533,7 @@ device-init:
 		{"ServerURL", capturedConfig.DeviceInitConfig.ServerURL, "https://cli.com:9090"},
 		{"KeyEnc", capturedConfig.DeviceInitConfig.KeyEnc, "cose"},
 		{"InsecureTLS", capturedConfig.DeviceInitConfig.InsecureTLS, true},
+		{"SerialNumber", capturedConfig.DeviceInitConfig.SerialNumber, "serial100"},
 	}
 
 	for _, c := range checks {
