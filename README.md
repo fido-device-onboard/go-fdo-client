@@ -127,6 +127,17 @@ The `onboard` command implements an infinite retry loop that continues attemptin
 - **Delays**: Applies delays between retry attempts as specified in RV directives (with ±25% jitter per FDO spec)
 - **TO2 Retry Delay**: Use `--to2-retry-delay` to add delay between multiple Owner URLs from the same directive (default: 0, disabled)
 
+## ServiceInfo Module Support
+
+The `onboard` command supports the following FDO Service Modules that can be invoked by the FDO Owner server during device onboarding:
+
+- **fdo.command**: The `fdo.command` module provides the functionality that allows the FDO Owner server to execute arbitrary shell commands on the device.
+- **fdo.download**: The `fdo.download` module provides the functionality to download a binary file from the FDO Owner server to the device.
+- **fdo.upload**: The `fdo.upload` module provides the functionality to transfer a binary file from the device to the FDO Owner server.
+- **fdo.wget**: The `fdo.wget` module provides the functionality to transfer a binary file from an HTTP server to the device via a network.
+
+Please refer to the FSIM module definition [documentation](https://github.com/fido-alliance/fdo-sim) for further details. By default all Service Modules are available for use by the FDO Owner server during onboarding. Refer to the `onboard` command help text for additional service module configuration options. Refer to the FDO Owner server [documentation](https://github.com/fido-device-onboard/go-fdo-server) for server-side service module configuration details.
+
 ## Running the FDO Client using a Credential File Blob
 ### Remove Credential File
 Remove the credential file if it exists:
