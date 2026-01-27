@@ -52,6 +52,7 @@ type DeviceInitConfig struct {
 type OnboardConfig struct {
 	Kex                  string        `mapstructure:"kex"`
 	Cipher               string        `mapstructure:"cipher"`
+	DefaultWorkingDir    string        `mapstructure:"default-working-dir"`
 	Download             string        `mapstructure:"download"`
 	EchoCommands         bool          `mapstructure:"echo-commands"`
 	EnableInteropTest    bool          `mapstructure:"enable-interop-test"`
@@ -60,7 +61,6 @@ type OnboardConfig struct {
 	AllowCredentialReuse bool          `mapstructure:"allow-credential-reuse"`
 	Resale               bool          `mapstructure:"resale"`
 	TO2RetryDelay        time.Duration `mapstructure:"to2-retry-delay"`
-	Upload               []string      `mapstructure:"upload"`
 	WgetDir              string        `mapstructure:"wget-dir"`
 }
 

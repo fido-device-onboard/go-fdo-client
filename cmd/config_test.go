@@ -812,6 +812,8 @@ func TestOnboard_DirectoryValidation(t *testing.T) {
 		{"invalid download", "download", "/nonexistent", true},
 		{"valid wget-dir", "wget-dir", validDir, false},
 		{"invalid wget-dir", "wget-dir", "/nonexistent", true},
+		{"valid default-working-dir", "default-working-dir", validDir, false},
+		{"invalid default-working-dir", "default-working-dir", "/nonexistent", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -827,165 +829,27 @@ func TestOnboard_DirectoryValidation(t *testing.T) {
 	}
 }
 
-func TestOnboard_UploadFlag(t *testing.T) {
-	t.Run("CLI with valid upload path", func(t *testing.T) {
-		validFile := filepath.Join(t.TempDir(), "upload.txt")
-		if err := os.WriteFile(validFile, []byte("test"), 0o600); err != nil {
-			t.Fatal(err)
+func TestOnboard_DefaultWorkingDirWritability(t *testing.T) {
+	t.Run("read-only directory", func(t *testing.T) {
+		if os.Getuid() == 0 {
+			t.Skip("Skipping read-only test when running as root")
 		}
 
-		if err := runCLI(t, onboardCmd, "onboard", "--blob", "cred.bin", "--key", "ec384",
-			"--kex", "ECDH256", "--cipher", "A128GCM", "--upload", validFile); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		readOnlyDir := t.TempDir()
+		// Make directory read-only
+		err := os.Chmod(readOnlyDir, 0444)
+		if err != nil {
+			t.Fatalf("Failed to make directory read-only: %v", err)
 		}
+		defer os.Chmod(readOnlyDir, 0755) // Cleanup
 
-		if got := len(onboardConfig.Onboard.Upload); got != 1 {
-			t.Errorf("Upload count = %d, want 1", got)
-		}
-	})
-
-	t.Run("CLI with invalid upload path", func(t *testing.T) {
-		err := runCLI(t, onboardCmd, "onboard", "--blob", "cred.bin", "--key", "ec384",
-			"--kex", "ECDH256", "--cipher", "A128GCM", "--upload", "/nonexistent/file.txt")
+		yaml := fmt.Sprintf("blob: cred.bin\nkey: ec384\nonboard:\n  kex: ECDH256\n  cipher: A128GCM\n  default-working-dir: %s", readOnlyDir)
+		err = runTest(t, onboardCmd, yaml, "yaml")
 		if err == nil {
-			t.Fatalf("expected error for invalid upload path, got nil")
+			t.Fatal("expected error for read-only directory")
 		}
-	})
-
-	t.Run("CLI with multiple upload paths", func(t *testing.T) {
-		dir := t.TempDir()
-		file1 := filepath.Join(dir, "file1.txt")
-		file2 := filepath.Join(dir, "file2.txt")
-		if err := os.WriteFile(file1, []byte("test1"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file2, []byte("test2"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := runCLI(t, onboardCmd, "onboard", "--blob", "cred.bin", "--key", "ec384",
-			"--kex", "ECDH256", "--cipher", "A128GCM", "--upload", file1, "--upload", file2); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if got := len(onboardConfig.Onboard.Upload); got != 2 {
-			t.Errorf("Upload count = %d, want 2", got)
-		}
-	})
-}
-
-func TestOnboard_UploadViaConfig(t *testing.T) {
-	t.Run("single file via YAML", func(t *testing.T) {
-		file := filepath.Join(t.TempDir(), "upload.txt")
-		if err := os.WriteFile(file, []byte("test"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-
-		yaml := fmt.Sprintf(`blob: cred.bin
-key: ec384
-onboard:
-  kex: ECDH256
-  cipher: A128GCM
-  upload:
-    - %s`, file)
-
-		if err := runTest(t, onboardCmd, yaml, "yaml"); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if got := len(capturedConfig.OnboardConfig.Upload); got != 1 {
-			t.Errorf("Upload count = %d, want 1", got)
-		}
-	})
-
-	t.Run("multiple files via YAML", func(t *testing.T) {
-		dir := t.TempDir()
-		file1 := filepath.Join(dir, "file1.txt")
-		file2 := filepath.Join(dir, "file2.txt")
-		if err := os.WriteFile(file1, []byte("test1"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file2, []byte("test2"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-
-		yaml := fmt.Sprintf(`blob: cred.bin
-key: ec384
-onboard:
-  kex: ECDH256
-  cipher: A128GCM
-  upload:
-    - %s
-    - %s`, file1, file2)
-
-		if err := runTest(t, onboardCmd, yaml, "yaml"); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if got := len(capturedConfig.OnboardConfig.Upload); got != 2 {
-			t.Errorf("Upload count = %d, want 2", got)
-		}
-	})
-
-	t.Run("invalid path via YAML", func(t *testing.T) {
-		yaml := `blob: cred.bin
-key: ec384
-onboard:
-  kex: ECDH256
-  cipher: A128GCM
-  upload:
-    - /nonexistent/file.txt`
-
-		err := runTest(t, onboardCmd, yaml, "yaml")
-		if err == nil {
-			t.Fatal("expected error for nonexistent upload file")
-		}
-	})
-
-	t.Run("CLI overrides config", func(t *testing.T) {
-		dir := t.TempDir()
-		configFile := filepath.Join(dir, "config-upload.txt")
-		cliFile := filepath.Join(dir, "cli-upload.txt")
-		if err := os.WriteFile(configFile, []byte("from config"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(cliFile, []byte("from cli"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-
-		yaml := fmt.Sprintf(`blob: cred.bin
-key: ec384
-onboard:
-  kex: ECDH256
-  cipher: A128GCM
-  upload:
-    - %s`, configFile)
-
-		resetState(t)
-		stubRunE(t, onboardCmd)
-		path := writeConfig(t, yaml, "yaml")
-
-		rootCmd.SetArgs([]string{"onboard", "--config", path, "--upload", cliFile})
-
-		if err := rootCmd.Execute(); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// CLI should override config (only CLI file present)
-		if got := len(onboardConfig.Onboard.Upload); got != 1 {
-			t.Errorf("Upload count = %d, want 1 (CLI overrides config)", got)
-		}
-
-		// Verify it's the CLI file, not the config file
-		found := false
-		for _, path := range onboardConfig.Onboard.Upload {
-			if strings.Contains(path, "cli-upload.txt") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Error("Expected CLI upload file, but it's not present")
+		if !strings.Contains(err.Error(), "not writable") {
+			t.Errorf("expected 'not writable' error, got: %v", err)
 		}
 	})
 }
