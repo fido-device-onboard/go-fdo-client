@@ -3,7 +3,14 @@
 
 # https://github.com/fido-device-onboard/go-fdo-client
 %global goipath         github.com/fido-device-onboard/go-fdo-client
-%global debug_package   %{nil}
+%global with_debug 1
+
+%if 0%{?with_debug}
+%global _find_debuginfo_dwz_opts %{nil}
+%global _dwz_low_mem_die_limit 0
+%else
+%global debug_package %{nil}
+%endif
 
 Version:        0.0.2
 %gometa -L -f
@@ -31,7 +38,12 @@ FDO manufacturer and owner servers to perform device on-boarding.
 
 %build
 %global gomodulesmode GO111MODULE=on
-export LDFLAGS="-X %{goipath}/internal/version.VERSION=%{version}"
+
+# https://discussion.fedoraproject.org/t/why-does-the-go-compiler-uses-x-nodwarf5-by-default/179804
+# https://github.com/golang/go/issues/75079
+export GOEXPERIMENT="nodwarf5"
+
+export GO_LDFLAGS="-X %{goipath}/internal/version.VERSION=%{version}"
 %gobuild -o %{gobuilddir}/bin/go-fdo-client %{goipath}
 
 %install
