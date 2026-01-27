@@ -472,6 +472,21 @@ func (files fsVar) Type() string {
 
 // Open implements fs.FS
 func (files fsVar) Open(path string) (fs.File, error) {
+	// Handle absolute paths by checking if they match registered files directly
+	if filepath.IsAbs(path) {
+		// For absolute paths, check if they match any registered files
+		for _, abs := range files {
+			if abs == filepath.Clean(path) {
+				return os.Open(abs)
+			}
+		}
+		return nil, &fs.PathError{
+			Op:   "open",
+			Path: path,
+			Err:  fs.ErrNotExist,
+		}
+	}
+
 	if !fs.ValidPath(path) {
 		return nil, &fs.PathError{
 			Op:   "open",
@@ -507,7 +522,7 @@ func (files fsVar) Open(path string) (fs.File, error) {
 // path.
 func pathToName(path, abs string) string {
 	cleaned := filepath.Clean(path)
-	if rooted := path[:1] == "/"; rooted {
+	if len(path) > 0 && path[0] == '/' {
 		return cleaned
 	}
 	pathparts := strings.Split(cleaned, string(filepath.Separator))
