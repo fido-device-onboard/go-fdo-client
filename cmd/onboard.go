@@ -33,8 +33,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-type fsVar map[string]string
-
 type slogErrorWriter struct{}
 
 func (e slogErrorWriter) Write(p []byte) (int, error) {
@@ -121,6 +119,15 @@ At least one of --blob or --tpm is required to access device credentials.`,
 
 func onboardCmdInit() {
 	rootCmd.AddCommand(onboardCmd)
+
+	// Get current working directory for default values
+	currentDir, err := os.Getwd()
+	if err != nil {
+		// If we can't get working directory, leave as empty string
+		// (validation will require user to specify an absolute path)
+		currentDir = ""
+	}
+
 	onboardCmd.Flags().Bool("allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
 	onboardCmd.Flags().String("cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
 	onboardCmd.Flags().String("download", "", "fdo.download: override destination directory set by Owner server")
@@ -131,7 +138,7 @@ func onboardCmdInit() {
 	onboardCmd.Flags().Int("max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
 	onboardCmd.Flags().Bool("resale", false, "Perform resale")
 	onboardCmd.Flags().Duration("to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
-	onboardCmd.Flags().StringArray("upload", nil, "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
+	onboardCmd.Flags().String("default-working-dir", currentDir, "Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget)")
 	onboardCmd.Flags().String("wget-dir", "", "fdo.wget: override destination directory set by Owner server")
 }
 
@@ -369,8 +376,8 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 // initializeFSIMs creates and configures all FDO Service Info Modules (FSIMs).
 // All standard FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) are enabled
 // by default using go-fdo library defaults. The CLI parameters allow customization
-// of the default behavior.
-func initializeFSIMs(dlDir, wgetDir string, uploads []string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
+// of the default behavior. Uses a common default directory for FIDO Alliance compliance.
+func initializeFSIMs(dlDir, wgetDir, defaultWorkingDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
 	fsims := map[string]serviceinfo.DeviceModule{}
 	if enableInteropTest {
 		fsims["fido_alliance"] = &fsim.Interop{}
@@ -406,19 +413,13 @@ func initializeFSIMs(dlDir, wgetDir string, uploads []string, enableInteropTest 
 	}
 	fsims["fdo.download"] = dlFSIM
 
-	// fdo.upload: by default allow owner access to any file it requests (assume read
-	// access permissions are correct).  Use --upload to restrict which files/directories the
-	// owner may access
-	fsVarUploads := make(fsVar)
-	for _, path := range uploads {
-		abs, _ := filepath.Abs(path)
-		fsVarUploads[pathToName(path, abs)] = abs
-	}
-	if len(fsVarUploads) == 0 {
-		fsVarUploads["/"] = "" // allow filesystem access, see fsVar.Open
-	}
+	// fdo.upload:
+	// - Absolute paths are always allowed (no restrictions on device side)
+	// - Relative paths use the default directory
 	fsims["fdo.upload"] = &fsim.Upload{
-		FS: fsVarUploads,
+		FS: &WorkingDirFS{
+			DefaultDir: defaultWorkingDir,
+		},
 	}
 
 	// fdo.wget: use --wget-dir to force downloaded files into a specific local directory,
@@ -443,7 +444,7 @@ func initializeFSIMs(dlDir, wgetDir string, uploads []string, enableInteropTest 
 }
 
 func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
-	conf.DeviceModules = initializeFSIMs(onboardConfig.Onboard.Download, onboardConfig.Onboard.WgetDir, onboardConfig.Onboard.Upload, onboardConfig.Onboard.EnableInteropTest)
+	conf.DeviceModules = initializeFSIMs(onboardConfig.Onboard.Download, onboardConfig.Onboard.WgetDir, onboardConfig.Onboard.DefaultWorkingDir, onboardConfig.Onboard.EnableInteropTest)
 	return fdo.TO2(ctx, transport, to1d, conf)
 }
 
@@ -473,57 +474,79 @@ func printDeviceStatus(status FdoDeviceState) {
 	}
 }
 
-// Open implements fs.FS
-func (files fsVar) Open(path string) (fs.File, error) {
-	if !fs.ValidPath(path) {
+// WorkingDirFS implements a simplified file system for uploads following FIDO Alliance spec
+type WorkingDirFS struct {
+	DefaultDir string // Default directory for relative paths
+}
+
+// Open implements fs.FS with simplified logic:
+// - Absolute paths are always allowed
+// - Relative paths are resolved from DefaultDir
+// - Only basic file validation (no directories)
+func (ufs *WorkingDirFS) Open(name string) (fs.File, error) {
+	var targetPath string
+
+	// Determine target path based on absolute vs relative
+	if filepath.IsAbs(name) {
+		// Absolute paths are always allowed
+		targetPath = name
+	} else {
+		// Relative paths go to default directory
+		targetPath = filepath.Join(ufs.DefaultDir, name)
+
+		// Security check: ensure the resolved path is still within the default directory
+		if !strings.HasPrefix(targetPath, filepath.Clean(ufs.DefaultDir)+string(filepath.Separator)) &&
+			targetPath != filepath.Clean(ufs.DefaultDir) {
+			return nil, &fs.PathError{
+				Op:   "open",
+				Path: name,
+				Err:  fs.ErrPermission,
+			}
+		}
+	}
+
+	// Open the file
+	file, err := os.Open(targetPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Basic validation - ensure it's a file, not a directory
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+
+	if info.IsDir() {
+		file.Close()
 		return nil, &fs.PathError{
 			Op:   "open",
-			Path: path,
+			Path: name,
 			Err:  fs.ErrInvalid,
 		}
 	}
 
-	// TODO: Enforce chroot-like security
-	if _, rootAccess := files["/"]; rootAccess {
-		return os.Open(filepath.Clean(path))
-	}
-
-	name := pathToName(path, "")
-	if abs, ok := files[name]; ok {
-		return os.Open(filepath.Clean(abs))
-	}
-	for dir := filepath.Dir(name); dir != "/" && dir != "."; dir = filepath.Dir(dir) {
-		if abs, ok := files[dir]; ok {
-			return os.Open(filepath.Clean(abs))
-		}
-	}
-	return nil, &fs.PathError{
-		Op:   "open",
-		Path: path,
-		Err:  fs.ErrNotExist,
-	}
-}
-
-// The name of the directory or file is its cleaned path, if absolute. If the
-// path given is relative, then remove all ".." and "." at the start. If the
-// path given is only 1 or more ".." or ".", then use the name of the absolute
-// path.
-func pathToName(path, abs string) string {
-	cleaned := filepath.Clean(path)
-	if rooted := path[:1] == "/"; rooted {
-		return cleaned
-	}
-	pathparts := strings.Split(cleaned, string(filepath.Separator))
-	for len(pathparts) > 0 && (pathparts[0] == ".." || pathparts[0] == ".") {
-		pathparts = pathparts[1:]
-	}
-	if len(pathparts) == 0 && abs != "" {
-		pathparts = []string{filepath.Base(abs)}
-	}
-	return filepath.Join(pathparts...)
+	return file, nil
 }
 
 func (o *OnboardClientConfig) validate() error {
+	// Validate default working directory is an absolute path
+	if !filepath.IsAbs(o.Onboard.DefaultWorkingDir) {
+		return fmt.Errorf("default-working-dir must be an absolute path, got: %s", o.Onboard.DefaultWorkingDir)
+	}
+	// Validate directory exists and is writable
+	if !fileExists(o.Onboard.DefaultWorkingDir) {
+		return fmt.Errorf("invalid default working directory: %s", o.Onboard.DefaultWorkingDir)
+	}
+	// Test writability using CreateTemp
+	tempFile, err := os.CreateTemp(o.Onboard.DefaultWorkingDir, ".fdo.test_*")
+	if err != nil {
+		return fmt.Errorf("default working directory is not writable: %w", err)
+	}
+	tempFile.Close()
+	os.Remove(tempFile.Name())
+
 	if o.Key == "" {
 		return fmt.Errorf("--key is required (via CLI flag or config file)")
 	}
@@ -550,22 +573,6 @@ func (o *OnboardClientConfig) validate() error {
 
 	if o.Onboard.MaxServiceInfoSize < 0 || o.Onboard.MaxServiceInfoSize > math.MaxUint16 {
 		return fmt.Errorf("max-serviceinfo-size must be between 0 and %d", math.MaxUint16)
-	}
-
-	for _, path := range o.Onboard.Upload {
-		if !isValidPath(path) {
-			return fmt.Errorf("invalid upload path: %s", path)
-		}
-
-		if !fileExists(path) {
-			return fmt.Errorf("file doesn't exist: %s", path)
-		}
-
-		_, err := filepath.Abs(path)
-		if err != nil {
-			return fmt.Errorf("[%q]: %w", path, err)
-		}
-
 	}
 
 	if o.Onboard.WgetDir != "" && (!isValidPath(o.Onboard.WgetDir) || !fileExists(o.Onboard.WgetDir)) {
