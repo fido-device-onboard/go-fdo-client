@@ -107,12 +107,11 @@ At least one of --blob or --tpm is required to store device credentials.`,
 
 func deviceInitCmdInit() {
 	rootCmd.AddCommand(deviceInitCmd)
-	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.KeyEnc, "key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
-	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.DeviceInfo, "device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
-	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.DeviceInfoMac, "device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
-	deviceInitCmd.Flags().BoolVar(&diConf.DeviceInit.InsecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	deviceInitCmd.Flags().StringVar(&diConf.DeviceInit.SerialNumber, "serial-number", "", "Serial number for device credentials, if not specified, it'll be gathered from the system")
-
+	deviceInitCmd.Flags().String("key-enc", "x509", "Public key encoding to use for manufacturer key [x509,x5chain,cose]")
+	deviceInitCmd.Flags().String("device-info", "", "Device information for device credentials, if not specified, it'll be gathered from the system")
+	deviceInitCmd.Flags().String("device-info-mac", "", "Mac-address's iface e.g. eth0 for device credentials")
+	deviceInitCmd.Flags().Bool("insecure-tls", false, "Skip TLS certificate verification")
+	deviceInitCmd.Flags().String("serial-number", "", "Serial number for device credentials, if not specified, it'll be gathered from the system")
 }
 
 func init() {

@@ -122,18 +122,18 @@ At least one of --blob or --tpm is required to access device credentials.`,
 
 func onboardCmdInit() {
 	rootCmd.AddCommand(onboardCmd)
-	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.AllowCredentialReuse, "allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
-	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.Cipher, "cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
-	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.Download, "download", "", "fdo.download: override destination directory set by Owner server")
-	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.EchoCommands, "echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
-	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.EnableInteropTest, "enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
-	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.Kex, "kex", "", "Name of cipher suite to use for key exchange (see usage)")
-	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.InsecureTLS, "insecure-tls", false, "Skip TLS certificate verification")
-	onboardCmd.Flags().IntVar(&onboardConfig.Onboard.MaxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
-	onboardCmd.Flags().BoolVar(&onboardConfig.Onboard.Resale, "resale", false, "Perform resale")
-	onboardCmd.Flags().DurationVar(&onboardConfig.Onboard.TO2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
-	onboardCmd.Flags().StringArrayVar(&onboardConfig.Onboard.Upload, "upload", nil, "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
-	onboardCmd.Flags().StringVar(&onboardConfig.Onboard.WgetDir, "wget-dir", "", "fdo.wget: override destination directory set by Owner server")
+	onboardCmd.Flags().Bool("allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
+	onboardCmd.Flags().String("cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
+	onboardCmd.Flags().String("download", "", "fdo.download: override destination directory set by Owner server")
+	onboardCmd.Flags().Bool("echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
+	onboardCmd.Flags().Bool("enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
+	onboardCmd.Flags().String("kex", "", "Name of cipher suite to use for key exchange (see usage)")
+	onboardCmd.Flags().Bool("insecure-tls", false, "Skip TLS certificate verification")
+	onboardCmd.Flags().Int("max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
+	onboardCmd.Flags().Bool("resale", false, "Perform resale")
+	onboardCmd.Flags().Duration("to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
+	onboardCmd.Flags().StringArray("upload", nil, "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
+	onboardCmd.Flags().String("wget-dir", "", "fdo.wget: override destination directory set by Owner server")
 }
 
 func init() {

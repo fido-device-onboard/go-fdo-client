@@ -82,10 +82,10 @@ func Execute() error {
 func rootCmdInit() {
 	pflags := rootCmd.PersistentFlags()
 	pflags.StringVar(&configFile, "config", "", "Path to configuration file (YAML or TOML)")
-	pflags.StringVar(&rootConfig.Blob, "blob", "", "File path of device credential blob")
-	pflags.BoolVar(&rootConfig.Debug, "debug", false, "Print HTTP contents")
-	pflags.StringVar(&rootConfig.TPM, "tpm", "", "Use a TPM at path for device credential secrets")
-	pflags.StringVar(&rootConfig.Key, "key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
+	pflags.String("blob", "", "File path of device credential blob")
+	pflags.Bool("debug", false, "Print HTTP contents")
+	pflags.String("tpm", "", "Use a TPM at path for device credential secrets")
+	pflags.String("key", "", "Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]")
 
 	// Bind global flags to viper
 	if err := viper.BindPFlag("blob", pflags.Lookup("blob")); err != nil {
