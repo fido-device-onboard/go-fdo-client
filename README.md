@@ -84,7 +84,7 @@ Flags:
       --resale                     Perform resale
       --rv-only                    Perform TO1 then stop
       --to2-retry-delay duration   Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)
-      --upload fsVar               List of dirs and files to upload files from, comma-separated and/or flag provided multiple times (FSIM disabled if empty) (default [])
+      --upload fsVar               List of dirs and files to upload files from, flag can be used multiple times for multiple files (FSIM disabled if empty) (default [])
       --wget-dir string            A dir to wget files into (FSIM disabled if empty)
 
 Global Flags:
