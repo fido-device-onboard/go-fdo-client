@@ -8,3 +8,5 @@ test: ./test-onboarding.sh
 duration: 30m
 require:
   - go-fdo-client
+tag:
+  - e2e
