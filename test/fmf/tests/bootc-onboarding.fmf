@@ -1,0 +1,10 @@
+summary: Bootc image test for go-fdo-client onboarding workflow
+description: |
+    Tests the complete FDO onboarding workflow using go-fdo-client within bootc image
+    Note: go-fdo-client is installed in bootc image,
+    go-fdo-server is installed in the prepare step.
+test: ./test-bootc-onboarding.sh
+duration: 45m
+
+tag:
+  - bootc

@@ -1,13 +1,21 @@
-summary: Go FDO Client E2E Tests
+summary: FDO bootc test plan
+description: FDO device onboarding in bootc image
+
 discover:
     how: fmf
-    filter: tag:e2e
-execute:
-    how: tmt
+    filter: tag:bootc
+
+provision:
+    hardware:
+        virtualization:
+            is-supported: true
+        cpu:
+            processors: ">= 2"
+        memory: ">= 6 GB"
+
 prepare:
     - how: shell
       script: |
-        set -xeo pipefail
         rpm -q --whatprovides 'dnf-command(copr)' &> /dev/null || dnf install -y 'dnf-command(copr)'
         dnf copr list | grep 'fedora-iot/fedora-iot' || {
           . /etc/os-release
@@ -26,7 +34,26 @@ prepare:
           go-fdo-server-owner \
           go-fdo-server-rendezvous
         dnf copr disable -y @fedora-iot/fedora-iot
-provision:
-    how: virtual
-    memory: 4096
-    disk: 30
+
+    - how: install
+      package:
+        - golang
+        - make
+        - openssl
+        - curl
+        - git
+        - jq
+        - podman
+        - qemu-img
+        - qemu-kvm
+        - libvirt-client
+        - libvirt-daemon-kvm
+        - virt-install
+        - firewalld
+        - lorax
+        - gobject-introspection
+        - rpmbuild
+        - go-rpm-macros
+
+execute:
+    how: tmt
