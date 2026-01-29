@@ -61,7 +61,7 @@ func tpmCred() (hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
 		return nil, nil, nil, nil, err
 	}
 	var key tpm.Key
-	switch diKey {
+	switch rootConfig.Key {
 	case "ec256":
 		key, err = tpm.GenerateECKey(tpmc, elliptic.P256())
 	case "ec384":
@@ -71,7 +71,7 @@ func tpmCred() (hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
 	case "rsa3072":
 		key, err = tpm.GenerateRSAKey(tpmc, 3072)
 	default:
-		err = fmt.Errorf("unsupported key type: %s", diKey)
+		err = fmt.Errorf("unsupported key type: %s", rootConfig.Key)
 	}
 	if err != nil {
 		_ = tpmc.Close()
@@ -87,7 +87,7 @@ func tpmCred() (hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
 }
 
 func readCred() (_ *fdo.DeviceCredential, hmacSha256, hmacSha384 hash.Hash, key crypto.Signer, cleanup func() error, _ error) {
-	if tpmPath != "" {
+	if rootConfig.TPM != "" {
 		// DeviceCredential requires integrity, so it is stored as a file and
 		// expected to be protected. In the future, it should be stored in the
 		// TPM and access-protected with a policy.
@@ -117,7 +117,7 @@ func readCred() (_ *fdo.DeviceCredential, hmacSha256, hmacSha384 hash.Hash, key 
 
 func loadDeviceStatus() (FdoDeviceState, error) {
 	var dataSize int
-	if tpmPath != "" {
+	if rootConfig.TPM != "" {
 		nv := tpm2.TPMHandle(FDO_CRED_NV_IDX)
 		dataSize = (int)(tpmnv.TpmNVGetSize(tpmc, nv))
 		if dataSize != 0 {
@@ -128,13 +128,13 @@ func loadDeviceStatus() (FdoDeviceState, error) {
 			return dc.State, nil
 		}
 	} else {
-		blobData, err := os.ReadFile(filepath.Clean(blobPath))
+		blobData, err := os.ReadFile(filepath.Clean(rootConfig.Blob))
 		if err != nil {
 			if os.IsNotExist(err) {
 				slog.Debug("DeviceCredential file does not exist. Set state to run DI")
 				return FDO_STATE_PRE_DI, nil
 			}
-			return FDO_STATE_PC, fmt.Errorf("error reading blob credential %q: %v", blobPath, err)
+			return FDO_STATE_PC, fmt.Errorf("error reading blob credential %q: %v", rootConfig.Blob, err)
 		}
 		if len(blobData) > 0 {
 			var dc fdoDeviceCredential
@@ -150,18 +150,18 @@ func loadDeviceStatus() (FdoDeviceState, error) {
 }
 
 func readCredFile(v any) error {
-	blobData, err := os.ReadFile(filepath.Clean(blobPath))
+	blobData, err := os.ReadFile(filepath.Clean(rootConfig.Blob))
 	if err != nil {
-		return fmt.Errorf("error reading blob credential %q: %w", blobPath, err)
+		return fmt.Errorf("error reading blob credential %q: %w", rootConfig.Blob, err)
 	}
 	if err := cbor.Unmarshal(blobData, v); err != nil {
-		return fmt.Errorf("error parsing blob credential %q: %w", blobPath, err)
+		return fmt.Errorf("error parsing blob credential %q: %w", rootConfig.Blob, err)
 	}
 	return nil
 }
 
 func updateCred(newDC fdo.DeviceCredential, state FdoDeviceState) error {
-	if tpmPath != "" {
+	if rootConfig.TPM != "" {
 		var dc fdoTpmDeviceCredential
 		if err := readTpmCred(&dc); err != nil {
 			return err
@@ -182,7 +182,7 @@ func updateCred(newDC fdo.DeviceCredential, state FdoDeviceState) error {
 
 func saveCred(dc any) error {
 	// Encode device credential to temp file
-	tmpbase := filepath.Dir(blobPath)
+	tmpbase := filepath.Dir(rootConfig.Blob)
 	tmp, err := os.CreateTemp(tmpbase, "fdo_cred_*")
 	if err != nil {
 		return fmt.Errorf("error creating temp file for device credential: %w", err)
@@ -199,8 +199,8 @@ func saveCred(dc any) error {
 	}
 
 	// Rename temp file to given blob path
-	if err := os.Rename(tmp.Name(), blobPath); err != nil {
-		return fmt.Errorf("error renaming temp blob credential to %q: %w", blobPath, err)
+	if err := os.Rename(tmp.Name(), rootConfig.Blob); err != nil {
+		return fmt.Errorf("error renaming temp blob credential to %q: %w", rootConfig.Blob, err)
 	}
 
 	return nil
@@ -233,7 +233,7 @@ func saveTpmCred(dc any) error {
 	}
 	data := buf.Bytes()
 
-	tpmHashAlg, err := getTPMAlgorithm(diKey)
+	tpmHashAlg, err := getTPMAlgorithm(rootConfig.Key)
 	if err != nil {
 		return err
 	}
