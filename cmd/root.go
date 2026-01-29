@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 
@@ -89,16 +90,16 @@ func rootCmdInit() {
 
 	// Bind global flags to viper
 	if err := viper.BindPFlag("blob", pflags.Lookup("blob")); err != nil {
-		panic(err)
+		slog.Error("configuration error - flag binding failed for 'blob'", "error", err)
 	}
 	if err := viper.BindPFlag("debug", pflags.Lookup("debug")); err != nil {
-		panic(err)
+		slog.Error("configuration error - flag binding failed for 'debug'", "error", err)
 	}
 	if err := viper.BindPFlag("tpm", pflags.Lookup("tpm")); err != nil {
-		panic(err)
+		slog.Error("configuration error - flag binding failed for 'tpm'", "error", err)
 	}
 	if err := viper.BindPFlag("key", pflags.Lookup("key")); err != nil {
-		panic(err)
+		slog.Error("configuration error - flag binding failed for 'key'", "error", err)
 	}
 }
 

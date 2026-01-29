@@ -44,7 +44,6 @@ func (e slogErrorWriter) Write(p []byte) (int, error) {
 }
 
 var onboardConfig OnboardClientConfig
-var fsVarUploads fsVar
 
 var validCipherSuites = []string{
 	"A128GCM", "A192GCM", "A256GCM",
@@ -410,6 +409,11 @@ func initializeFSIMs(dlDir, wgetDir string, uploads []string, enableInteropTest 
 	// fdo.upload: by default allow owner access to any file it requests (assume read
 	// access permissions are correct).  Use --upload to restrict which files/directories the
 	// owner may access
+	fsVarUploads := make(fsVar)
+	for _, path := range uploads {
+		abs, _ := filepath.Abs(path)
+		fsVarUploads[pathToName(path, abs)] = abs
+	}
 	if len(fsVarUploads) == 0 {
 		fsVarUploads["/"] = "" // allow filesystem access, see fsVar.Open
 	}
@@ -548,7 +552,6 @@ func (o *OnboardClientConfig) validate() error {
 		return fmt.Errorf("max-serviceinfo-size must be between 0 and %d", math.MaxUint16)
 	}
 
-	fsVarUploads = make(fsVar)
 	for _, path := range o.Onboard.Upload {
 		if !isValidPath(path) {
 			return fmt.Errorf("invalid upload path: %s", path)
@@ -558,11 +561,11 @@ func (o *OnboardClientConfig) validate() error {
 			return fmt.Errorf("file doesn't exist: %s", path)
 		}
 
-		abs, err := filepath.Abs(path)
+		_, err := filepath.Abs(path)
 		if err != nil {
 			return fmt.Errorf("[%q]: %w", path, err)
 		}
-		fsVarUploads[pathToName(path, abs)] = abs
+
 	}
 
 	if o.Onboard.WgetDir != "" && (!isValidPath(o.Onboard.WgetDir) || !fileExists(o.Onboard.WgetDir)) {

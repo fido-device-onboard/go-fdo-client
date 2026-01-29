@@ -16,7 +16,7 @@ import (
 // by default without any CLI flags
 func TestFSIMsEnabledByDefault(t *testing.T) {
 	// Initialize with empty parameters (no CLI flags)
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", []string{}, false)
 
 	// Verify all expected standard modules are present
 	expectedModules := []string{"fdo.command", "fdo.download", "fdo.upload", "fdo.wget"}
@@ -35,7 +35,7 @@ func TestFSIMsEnabledByDefault(t *testing.T) {
 // TestInteropModuleNotEnabledByDefault verifies that the interop test module
 // is NOT enabled when the flag is false
 func TestInteropModuleNotEnabledByDefault(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", []string{}, false)
 
 	if _, exists := fsims["fido_alliance"]; exists {
 		t.Error("fido_alliance module should not be enabled by default (when enableInteropTest is false)")
@@ -45,7 +45,7 @@ func TestInteropModuleNotEnabledByDefault(t *testing.T) {
 // TestInteropModuleEnabledWithFlag verifies that the interop test module
 // IS enabled when the flag is true
 func TestInteropModuleEnabledWithFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), true)
+	fsims := initializeFSIMs("", "", []string{}, true)
 
 	if _, exists := fsims["fido_alliance"]; !exists {
 		t.Error("fido_alliance module should be enabled when enableInteropTest is true")
@@ -60,7 +60,7 @@ func TestInteropModuleEnabledWithFlag(t *testing.T) {
 // TestDownloadModuleWithoutFlag verifies that download FSIM uses library defaults
 // when no --download flag is provided
 func TestDownloadModuleWithoutFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", []string{}, false)
 
 	dlFSIM, ok := fsims["fdo.download"].(*fsim.Download)
 	if !ok {
@@ -87,7 +87,7 @@ func TestDownloadModuleWithFlag(t *testing.T) {
 	// Create a temporary test directory
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", make(fsVar), false)
+	fsims := initializeFSIMs(tempDir, "", []string{}, false)
 
 	dlFSIM, ok := fsims["fdo.download"].(*fsim.Download)
 	if !ok {
@@ -108,7 +108,7 @@ func TestDownloadModuleWithFlag(t *testing.T) {
 func TestDownloadCreateTempFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", make(fsVar), false)
+	fsims := initializeFSIMs(tempDir, "", []string{}, false)
 	dlFSIM := fsims["fdo.download"].(*fsim.Download)
 
 	// Test CreateTemp creates files in the specified directory
@@ -136,7 +136,7 @@ func TestDownloadCreateTempFunction(t *testing.T) {
 func TestDownloadNameToPathFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", make(fsVar), false)
+	fsims := initializeFSIMs(tempDir, "", []string{}, false)
 	dlFSIM := fsims["fdo.download"].(*fsim.Download)
 
 	testCases := []struct {
@@ -184,7 +184,7 @@ func TestDownloadNameToPathFunction(t *testing.T) {
 // TestWgetModuleWithoutFlag verifies that wget FSIM uses library defaults
 // when no --wget-dir flag is provided
 func TestWgetModuleWithoutFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", []string{}, false)
 
 	wgetFSIM, ok := fsims["fdo.wget"].(*fsim.Wget)
 	if !ok {
@@ -205,7 +205,7 @@ func TestWgetModuleWithoutFlag(t *testing.T) {
 func TestWgetModuleWithFlag(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, make(fsVar), false)
+	fsims := initializeFSIMs("", tempDir, []string{}, false)
 
 	wgetFSIM, ok := fsims["fdo.wget"].(*fsim.Wget)
 	if !ok {
@@ -226,7 +226,7 @@ func TestWgetModuleWithFlag(t *testing.T) {
 func TestWgetCreateTempFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, make(fsVar), false)
+	fsims := initializeFSIMs("", tempDir, []string{}, false)
 	wgetFSIM := fsims["fdo.wget"].(*fsim.Wget)
 
 	// Test CreateTemp creates files in the specified directory
@@ -254,7 +254,7 @@ func TestWgetCreateTempFunction(t *testing.T) {
 func TestWgetNameToPathFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, make(fsVar), false)
+	fsims := initializeFSIMs("", tempDir, []string{}, false)
 	wgetFSIM := fsims["fdo.wget"].(*fsim.Wget)
 
 	testCases := []struct {
@@ -293,9 +293,8 @@ func TestWgetNameToPathFunction(t *testing.T) {
 // unrestricted filesystem access by default (when --upload flag is not provided)
 func TestUploadModuleDefaultRootAccess(t *testing.T) {
 	// Empty uploads map simulates no --upload flag
-	uploads := make(fsVar)
 
-	fsims := initializeFSIMs("", "", uploads, false)
+	fsims := initializeFSIMs("", "", []string{}, false)
 
 	uploadFSIM, ok := fsims["fdo.upload"].(*fsim.Upload)
 	if !ok {
@@ -323,9 +322,7 @@ func TestUploadModuleDefaultRootAccess(t *testing.T) {
 // access when --upload flag is provided
 func TestUploadModuleRestrictedAccess(t *testing.T) {
 	// Create uploads map with specific paths (simulates --upload flag usage)
-	uploads := make(fsVar)
-	uploads["/allowed/path"] = "/allowed/path"
-	uploads["/another/path"] = "/another/path"
+	uploads := []string{"/allowed/path", "/another/path"}
 
 	fsims := initializeFSIMs("", "", uploads, false)
 
@@ -365,21 +362,21 @@ func TestCommandModuleAlwaysEnabled(t *testing.T) {
 		name              string
 		dlDir             string
 		wgetDir           string
-		uploads           fsVar
+		uploads           []string
 		enableInteropTest bool
 	}{
 		{
 			name:              "no flags",
 			dlDir:             "",
 			wgetDir:           "",
-			uploads:           make(fsVar),
+			uploads:           []string{},
 			enableInteropTest: false,
 		},
 		{
 			name:              "all flags set",
 			dlDir:             "/tmp/dl",
 			wgetDir:           "/tmp/wget",
-			uploads:           fsVar{"/test": "/test"},
+			uploads:           []string{"/test"},
 			enableInteropTest: true,
 		},
 	}
