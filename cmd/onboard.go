@@ -481,7 +481,37 @@ func (files fsVar) Type() string {
 
 // openFileSecurely opens a file with security checks
 func openFileSecurely(path string) (fs.File, error) {
-	file, err := os.Open(path)
+	// Security: Check for path traversal attempts
+	if strings.Contains(path, "..") {
+		return nil, &fs.PathError{
+			Op:   "open",
+			Path: path,
+			Err:  fs.ErrInvalid,
+		}
+	}
+
+	// Security: Resolve symlinks to check final target
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		// File doesn't exist or symlink is broken
+		return nil, &fs.PathError{
+			Op:   "open",
+			Path: path,
+			Err:  fs.ErrNotExist,
+		}
+	}
+
+	// Security: Check if resolved path points to sensitive areas
+	if isSensitivePath(resolvedPath) {
+		slog.Warn("Upload access denied to sensitive path", "requested", path, "resolved", resolvedPath)
+		return nil, &fs.PathError{
+			Op:   "open",
+			Path: path,
+			Err:  fs.ErrPermission,
+		}
+	}
+
+	file, err := os.Open(resolvedPath)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +534,32 @@ func openFileSecurely(path string) (fs.File, error) {
 	}
 
 	return file, nil
+}
+
+// isSensitivePath checks if a path points to sensitive system areas
+func isSensitivePath(path string) bool {
+	// List of sensitive directories that should not be accessible via upload
+	sensitivePaths := []string{
+		"/etc/passwd",
+		"/etc/shadow",
+		"/etc/ssh",
+		"/root",
+		"/proc",
+		"/sys",
+		"/dev",
+		"/etc/systemd",
+		"/var/log/secure",
+		"/var/log/auth.log",
+	}
+
+	cleanPath := filepath.Clean(path)
+	for _, sensitive := range sensitivePaths {
+		// Check if the path is under a sensitive directory
+		if strings.HasPrefix(cleanPath, sensitive) {
+			return true
+		}
+	}
+	return false
 }
 
 // Open implements fs.FS
