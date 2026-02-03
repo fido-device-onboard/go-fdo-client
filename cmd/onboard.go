@@ -479,6 +479,33 @@ func (files fsVar) Type() string {
 	return "fsVar"
 }
 
+// openFileSecurely opens a file with security checks
+func openFileSecurely(path string) (fs.File, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if it's actually a file, not a directory
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+
+	// Error if it's a directory - upload module expects files only
+	if info.IsDir() {
+		file.Close()
+		return nil, &fs.PathError{
+			Op:   "open",
+			Path: path,
+			Err:  fs.ErrInvalid,
+		}
+	}
+
+	return file, nil
+}
+
 // Open implements fs.FS
 func (files fsVar) Open(path string) (fs.File, error) {
 	// Handle absolute paths by checking if they match registered files directly
@@ -486,7 +513,7 @@ func (files fsVar) Open(path string) (fs.File, error) {
 		// For absolute paths, check if they match any registered files
 		for _, abs := range files {
 			if abs == filepath.Clean(path) {
-				return os.Open(abs)
+				return openFileSecurely(abs)
 			}
 		}
 		return nil, &fs.PathError{
@@ -506,16 +533,16 @@ func (files fsVar) Open(path string) (fs.File, error) {
 
 	// TODO: Enforce chroot-like security
 	if _, rootAccess := files["/"]; rootAccess {
-		return os.Open(filepath.Clean(path))
+		return openFileSecurely(filepath.Clean(path))
 	}
 
 	name := pathToName(path, "")
 	if abs, ok := files[name]; ok {
-		return os.Open(filepath.Clean(abs))
+		return openFileSecurely(filepath.Clean(abs))
 	}
 	for dir := filepath.Dir(name); dir != "/" && dir != "."; dir = filepath.Dir(dir) {
 		if abs, ok := files[dir]; ok {
-			return os.Open(filepath.Clean(abs))
+			return openFileSecurely(filepath.Clean(abs))
 		}
 	}
 	return nil, &fs.PathError{
