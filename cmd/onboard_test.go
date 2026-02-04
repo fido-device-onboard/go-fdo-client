@@ -16,7 +16,7 @@ import (
 // by default without any CLI flags
 func TestFSIMsEnabledByDefault(t *testing.T) {
 	// Initialize with empty parameters (no CLI flags)
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", "/var/lib/go-fdo-client", false)
 
 	// Verify all expected standard modules are present
 	expectedModules := []string{"fdo.command", "fdo.download", "fdo.upload", "fdo.wget"}
@@ -35,7 +35,7 @@ func TestFSIMsEnabledByDefault(t *testing.T) {
 // TestInteropModuleNotEnabledByDefault verifies that the interop test module
 // is NOT enabled when the flag is false
 func TestInteropModuleNotEnabledByDefault(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", "/var/lib/go-fdo-client", false)
 
 	if _, exists := fsims["fido_alliance"]; exists {
 		t.Error("fido_alliance module should not be enabled by default (when enableInteropTest is false)")
@@ -45,7 +45,7 @@ func TestInteropModuleNotEnabledByDefault(t *testing.T) {
 // TestInteropModuleEnabledWithFlag verifies that the interop test module
 // IS enabled when the flag is true
 func TestInteropModuleEnabledWithFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), true)
+	fsims := initializeFSIMs("", "", "/var/lib/go-fdo-client", true)
 
 	if _, exists := fsims["fido_alliance"]; !exists {
 		t.Error("fido_alliance module should be enabled when enableInteropTest is true")
@@ -60,7 +60,7 @@ func TestInteropModuleEnabledWithFlag(t *testing.T) {
 // TestDownloadModuleWithoutFlag verifies that download FSIM uses library defaults
 // when no --download flag is provided
 func TestDownloadModuleWithoutFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", "/var/lib/go-fdo-client", false)
 
 	dlFSIM, ok := fsims["fdo.download"].(*fsim.Download)
 	if !ok {
@@ -87,7 +87,7 @@ func TestDownloadModuleWithFlag(t *testing.T) {
 	// Create a temporary test directory
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", make(fsVar), false)
+	fsims := initializeFSIMs(tempDir, "", "/var/lib/go-fdo-client", false)
 
 	dlFSIM, ok := fsims["fdo.download"].(*fsim.Download)
 	if !ok {
@@ -108,7 +108,7 @@ func TestDownloadModuleWithFlag(t *testing.T) {
 func TestDownloadCreateTempFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", make(fsVar), false)
+	fsims := initializeFSIMs(tempDir, "", "/var/lib/go-fdo-client", false)
 	dlFSIM := fsims["fdo.download"].(*fsim.Download)
 
 	// Test CreateTemp creates files in the specified directory
@@ -136,7 +136,7 @@ func TestDownloadCreateTempFunction(t *testing.T) {
 func TestDownloadNameToPathFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", make(fsVar), false)
+	fsims := initializeFSIMs(tempDir, "", "/var/lib/go-fdo-client", false)
 	dlFSIM := fsims["fdo.download"].(*fsim.Download)
 
 	testCases := []struct {
@@ -184,7 +184,7 @@ func TestDownloadNameToPathFunction(t *testing.T) {
 // TestWgetModuleWithoutFlag verifies that wget FSIM uses library defaults
 // when no --wget-dir flag is provided
 func TestWgetModuleWithoutFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", make(fsVar), false)
+	fsims := initializeFSIMs("", "", "/var/lib/go-fdo-client", false)
 
 	wgetFSIM, ok := fsims["fdo.wget"].(*fsim.Wget)
 	if !ok {
@@ -205,7 +205,7 @@ func TestWgetModuleWithoutFlag(t *testing.T) {
 func TestWgetModuleWithFlag(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, make(fsVar), false)
+	fsims := initializeFSIMs("", tempDir, "/var/lib/go-fdo-client", false)
 
 	wgetFSIM, ok := fsims["fdo.wget"].(*fsim.Wget)
 	if !ok {
@@ -226,7 +226,7 @@ func TestWgetModuleWithFlag(t *testing.T) {
 func TestWgetCreateTempFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, make(fsVar), false)
+	fsims := initializeFSIMs("", tempDir, "/var/lib/go-fdo-client", false)
 	wgetFSIM := fsims["fdo.wget"].(*fsim.Wget)
 
 	// Test CreateTemp creates files in the specified directory
@@ -254,7 +254,7 @@ func TestWgetCreateTempFunction(t *testing.T) {
 func TestWgetNameToPathFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, make(fsVar), false)
+	fsims := initializeFSIMs("", tempDir, "/var/lib/go-fdo-client", false)
 	wgetFSIM := fsims["fdo.wget"].(*fsim.Wget)
 
 	testCases := []struct {
@@ -289,72 +289,48 @@ func TestWgetNameToPathFunction(t *testing.T) {
 	}
 }
 
-// TestUploadModuleDefaultRootAccess verifies that upload module grants
-// unrestricted filesystem access by default (when --upload flag is not provided)
-func TestUploadModuleDefaultRootAccess(t *testing.T) {
-	// Empty uploads map simulates no --upload flag
-	uploads := make(fsVar)
+// TestUploadModuleUsesDefaultDir verifies that upload module uses UploadFS
+// with the specified default directory
+func TestUploadModuleUsesDefaultDir(t *testing.T) {
+	defaultDir := "/var/lib/go-fdo-client"
 
-	fsims := initializeFSIMs("", "", uploads, false)
+	fsims := initializeFSIMs("", "", defaultDir, false)
 
 	uploadFSIM, ok := fsims["fdo.upload"].(*fsim.Upload)
 	if !ok {
 		t.Fatal("fdo.upload module is not of type *fsim.Upload")
 	}
 
-	// Verify that the FS has root access marker
-	uploadFS, ok := uploadFSIM.FS.(fsVar)
+	// Verify that the FS is UploadFS type
+	uploadFS, ok := uploadFSIM.FS.(*UploadFS)
 	if !ok {
-		t.Fatal("Upload FS is not of type fsVar")
+		t.Fatal("Upload FS is not of type *UploadFS")
 	}
 
-	// Should have "/" entry for unrestricted access
-	if _, hasRootAccess := uploadFS["/"]; !hasRootAccess {
-		t.Error("Upload module should have root access ('/') by default when no --upload flag is provided")
-	}
-
-	// Should have exactly one entry (the root marker)
-	if len(uploadFS) != 1 {
-		t.Errorf("Expected exactly 1 entry in uploads map (root access marker), got %d", len(uploadFS))
+	// Verify default directory is set correctly
+	if uploadFS.DefaultDir != defaultDir {
+		t.Errorf("Expected DefaultDir to be %s, got %s", defaultDir, uploadFS.DefaultDir)
 	}
 }
 
-// TestUploadModuleRestrictedAccess verifies that upload module restricts
-// access when --upload flag is provided
-func TestUploadModuleRestrictedAccess(t *testing.T) {
-	// Create uploads map with specific paths (simulates --upload flag usage)
-	uploads := make(fsVar)
-	uploads["/allowed/path"] = "/allowed/path"
-	uploads["/another/path"] = "/another/path"
-
-	fsims := initializeFSIMs("", "", uploads, false)
-
-	uploadFSIM, ok := fsims["fdo.upload"].(*fsim.Upload)
-	if !ok {
-		t.Fatal("fdo.upload module is not of type *fsim.Upload")
+// TestUploadFSAbsolutePaths verifies that UploadFS handles absolute paths correctly
+func TestUploadFSAbsolutePaths(t *testing.T) {
+	// Create a test file in temp directory for testing
+	tempDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test content"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	uploadFS, ok := uploadFSIM.FS.(fsVar)
-	if !ok {
-		t.Fatal("Upload FS is not of type fsVar")
-	}
+	uploadFS := &UploadFS{DefaultDir: "/some/default"}
 
-	// Should NOT have root access when specific paths are provided
-	if _, hasRootAccess := uploadFS["/"]; hasRootAccess {
-		t.Error("Upload module should NOT have root access when --upload flag provides specific paths")
-	}
-
-	// Should have exactly the paths we specified
-	if len(uploadFS) != 2 {
-		t.Errorf("Expected 2 entries in uploads map, got %d", len(uploadFS))
-	}
-
-	// Verify the specific paths are present
-	if _, exists := uploadFS["/allowed/path"]; !exists {
-		t.Error("Expected /allowed/path to be in uploads map")
-	}
-	if _, exists := uploadFS["/another/path"]; !exists {
-		t.Error("Expected /another/path to be in uploads map")
+	// Test opening absolute path
+	file, err := uploadFS.Open(testFile)
+	if err != nil {
+		t.Errorf("Failed to open absolute path %s: %v", testFile, err)
+	} else {
+		file.Close()
 	}
 }
 
@@ -365,28 +341,28 @@ func TestCommandModuleAlwaysEnabled(t *testing.T) {
 		name              string
 		dlDir             string
 		wgetDir           string
-		uploads           fsVar
+		defaultDir        string
 		enableInteropTest bool
 	}{
 		{
 			name:              "no flags",
 			dlDir:             "",
 			wgetDir:           "",
-			uploads:           make(fsVar),
+			defaultDir:        "/var/lib/go-fdo-client",
 			enableInteropTest: false,
 		},
 		{
 			name:              "all flags set",
 			dlDir:             "/tmp/dl",
 			wgetDir:           "/tmp/wget",
-			uploads:           fsVar{"/test": "/test"},
+			defaultDir:        "/tmp/default",
 			enableInteropTest: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fsims := initializeFSIMs(tc.dlDir, tc.wgetDir, tc.uploads, tc.enableInteropTest)
+			fsims := initializeFSIMs(tc.dlDir, tc.wgetDir, tc.defaultDir, tc.enableInteropTest)
 
 			if _, exists := fsims["fdo.command"]; !exists {
 				t.Error("fdo.command module should always be enabled")
