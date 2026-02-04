@@ -1,6 +1,6 @@
 module github.com/fido-device-onboard/go-fdo-client
 
-go 1.25.0
+go 1.25.5
 
 require (
 	github.com/fido-device-onboard/go-fdo v0.0.0-20260116133239-94bd9c5d647c
