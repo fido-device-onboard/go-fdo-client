@@ -353,7 +353,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 // All standard FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) are enabled
 // by default using go-fdo library defaults. The CLI parameters allow customization
 // of the default behavior. Uses a common default directory for FIDO Alliance compliance.
-func initializeFSIMs(defaultDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
+func initializeFSIMs(dlDir, wgetDir, defaultDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
 	fsims := map[string]serviceinfo.DeviceModule{}
 	if enableInteropTest {
 		fsims["fido_alliance"] = &fsim.Interop{}
@@ -420,7 +420,7 @@ func initializeFSIMs(defaultDir string, enableInteropTest bool) map[string]servi
 }
 
 func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
-	conf.DeviceModules = initializeFSIMs(defaultDir, enableInteropTest)
+	conf.DeviceModules = initializeFSIMs(dlDir, wgetDir, defaultDir, enableInteropTest)
 	return fdo.TO2(ctx, transport, to1d, conf)
 }
 
