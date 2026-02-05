@@ -115,7 +115,7 @@ func init() {
 	onboardCmd.Flags().IntVar(&maxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
 	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
 	onboardCmd.Flags().DurationVar(&to2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
-	onboardCmd.Flags().StringVar(&defaultDir, "default-dir", "/var/lib/go-fdo-client", "Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget)")
+	onboardCmd.Flags().StringVar(&defaultDir, "default-working-dir", "/var/lib/go-fdo-client", "Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget)")
 	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "fdo.wget: override destination directory set by Owner server")
 
 	onboardCmd.MarkFlagRequired("key")
@@ -353,7 +353,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 // All standard FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) are enabled
 // by default using go-fdo library defaults. The CLI parameters allow customization
 // of the default behavior. Uses a common default directory for FIDO Alliance compliance.
-func initializeFSIMs(dlDir, wgetDir, defaultDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
+func initializeFSIMs(defaultDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
 	fsims := map[string]serviceinfo.DeviceModule{}
 	if enableInteropTest {
 		fsims["fido_alliance"] = &fsim.Interop{}
@@ -393,7 +393,7 @@ func initializeFSIMs(dlDir, wgetDir, defaultDir string, enableInteropTest bool) 
 	// - Absolute paths are always allowed (no restrictions on device side)
 	// - Relative paths use the default directory
 	fsims["fdo.upload"] = &fsim.Upload{
-		FS: &UploadFS{
+		FS: &WorkingDirFS{
 			DefaultDir: defaultDir,
 		},
 	}
@@ -420,7 +420,7 @@ func initializeFSIMs(dlDir, wgetDir, defaultDir string, enableInteropTest bool) 
 }
 
 func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
-	conf.DeviceModules = initializeFSIMs(dlDir, wgetDir, defaultDir, enableInteropTest)
+	conf.DeviceModules = initializeFSIMs(defaultDir, enableInteropTest)
 	return fdo.TO2(ctx, transport, to1d, conf)
 }
 
@@ -450,8 +450,8 @@ func printDeviceStatus(status FdoDeviceState) {
 	}
 }
 
-// UploadFS implements a simplified file system for uploads following FIDO Alliance spec
-type UploadFS struct {
+// WorkingDirFS implements a simplified file system for uploads following FIDO Alliance spec
+type WorkingDirFS struct {
 	DefaultDir string // Default directory for relative paths
 }
 
@@ -459,7 +459,7 @@ type UploadFS struct {
 // - Absolute paths are always allowed
 // - Relative paths are resolved from DefaultDir
 // - Only basic file validation (no directories)
-func (ufs *UploadFS) Open(name string) (fs.File, error) {
+func (ufs *WorkingDirFS) Open(name string) (fs.File, error) {
 	var targetPath string
 
 	// Determine target path based on absolute vs relative
