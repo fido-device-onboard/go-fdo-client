@@ -83,7 +83,7 @@ Flags:
       --resale                     Perform resale
       --rv-only                    Perform TO1 then stop
       --to2-retry-delay duration   Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)
-      --upload fsVar               fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times (default [])
+      --upload fsVar               fdo.upload: restrict Owner server upload access to specific dirs and files, flag can be used multiple times for multiple files (default [])
       --wget-dir string            fdo.wget: override destination directory set by Owner server
 
 Global Flags:
