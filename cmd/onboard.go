@@ -32,8 +32,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type fsVar map[string]string
-
 type slogErrorWriter struct{}
 
 func (e slogErrorWriter) Write(p []byte) (int, error) {
@@ -45,13 +43,13 @@ func (e slogErrorWriter) Write(p []byte) (int, error) {
 var (
 	allowCredentialReuse bool
 	cipherSuite          string
+	defaultDir           string // Default working directory for all FSIMs
 	dlDir                string
 	enableInteropTest    bool
 	kexSuite             string
 	maxServiceInfoSize   int
 	resale               bool
 	to2RetryDelay        time.Duration
-	uploads              = make(fsVar)
 	wgetDir              string
 )
 var validCipherSuites = []string{
@@ -117,7 +115,7 @@ func init() {
 	onboardCmd.Flags().IntVar(&maxServiceInfoSize, "max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
 	onboardCmd.Flags().BoolVar(&resale, "resale", false, "Perform resale")
 	onboardCmd.Flags().DurationVar(&to2RetryDelay, "to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
-	onboardCmd.Flags().Var(&uploads, "upload", "fdo.upload: restrict Owner server upload access to specific dirs and files, comma-separated and/or flag provided multiple times")
+	onboardCmd.Flags().StringVar(&defaultDir, "default-working-dir", "/var/lib/go-fdo-client", "Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget)")
 	onboardCmd.Flags().StringVar(&wgetDir, "wget-dir", "", "fdo.wget: override destination directory set by Owner server")
 
 	onboardCmd.MarkFlagRequired("key")
@@ -354,8 +352,8 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 // initializeFSIMs creates and configures all FDO Service Info Modules (FSIMs).
 // All standard FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) are enabled
 // by default using go-fdo library defaults. The CLI parameters allow customization
-// of the default behavior.
-func initializeFSIMs(dlDir, wgetDir string, uploads fsVar, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
+// of the default behavior. Uses a common default directory for FIDO Alliance compliance.
+func initializeFSIMs(dlDir, wgetDir, defaultDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
 	fsims := map[string]serviceinfo.DeviceModule{}
 	if enableInteropTest {
 		fsims["fido_alliance"] = &fsim.Interop{}
@@ -391,14 +389,13 @@ func initializeFSIMs(dlDir, wgetDir string, uploads fsVar, enableInteropTest boo
 	}
 	fsims["fdo.download"] = dlFSIM
 
-	// fdo.upload: by default allow owner access to any file it requests (assume read
-	// access permissions are correct).  Use --upload to restrict which files/directories the
-	// owner may access
-	if len(uploads) == 0 {
-		uploads["/"] = "" // allow filesystem access, see fsVar.Open
-	}
+	// fdo.upload:
+	// - Absolute paths are always allowed (no restrictions on device side)
+	// - Relative paths use the default directory
 	fsims["fdo.upload"] = &fsim.Upload{
-		FS: uploads,
+		FS: &WorkingDirFS{
+			DefaultDir: defaultDir,
+		},
 	}
 
 	// fdo.wget: use --wget-dir to force downloaded files into a specific local directory,
@@ -423,7 +420,7 @@ func initializeFSIMs(dlDir, wgetDir string, uploads fsVar, enableInteropTest boo
 }
 
 func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
-	conf.DeviceModules = initializeFSIMs(dlDir, wgetDir, uploads, enableInteropTest)
+	conf.DeviceModules = initializeFSIMs(dlDir, wgetDir, defaultDir, enableInteropTest)
 	return fdo.TO2(ctx, transport, to1d, conf)
 }
 
@@ -453,80 +450,50 @@ func printDeviceStatus(status FdoDeviceState) {
 	}
 }
 
-func (files fsVar) String() string {
-	if len(files) == 0 {
-		return "[]"
-	}
-	paths := "["
-	for path := range files {
-		paths += path + ","
-	}
-	return paths[:len(paths)-1] + "]"
+// WorkingDirFS implements a simplified file system for uploads following FIDO Alliance spec
+type WorkingDirFS struct {
+	DefaultDir string // Default directory for relative paths
 }
 
-func (files fsVar) Set(paths string) error {
-	for _, path := range strings.Split(paths, ",") {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return fmt.Errorf("[%q]: %w", path, err)
-		}
-		files[pathToName(path, abs)] = abs
+// Open implements fs.FS with simplified logic:
+// - Absolute paths are always allowed
+// - Relative paths are resolved from DefaultDir
+// - Only basic file validation (no directories)
+func (ufs *WorkingDirFS) Open(name string) (fs.File, error) {
+	var targetPath string
+
+	// Determine target path based on absolute vs relative
+	if filepath.IsAbs(name) {
+		// Absolute paths are always allowed
+		targetPath = filepath.Clean(name)
+	} else {
+		// Relative paths go to default directory
+		targetPath = filepath.Join(ufs.DefaultDir, filepath.Clean(name))
 	}
-	return nil
-}
 
-func (files fsVar) Type() string {
-	return "fsVar"
-}
+	// Open the file
+	file, err := os.Open(targetPath)
+	if err != nil {
+		return nil, err
+	}
 
-// Open implements fs.FS
-func (files fsVar) Open(path string) (fs.File, error) {
-	if !fs.ValidPath(path) {
+	// Basic validation - ensure it's a file, not a directory
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+
+	if info.IsDir() {
+		file.Close()
 		return nil, &fs.PathError{
 			Op:   "open",
-			Path: path,
+			Path: name,
 			Err:  fs.ErrInvalid,
 		}
 	}
 
-	// TODO: Enforce chroot-like security
-	if _, rootAccess := files["/"]; rootAccess {
-		return os.Open(filepath.Clean(path))
-	}
-
-	name := pathToName(path, "")
-	if abs, ok := files[name]; ok {
-		return os.Open(filepath.Clean(abs))
-	}
-	for dir := filepath.Dir(name); dir != "/" && dir != "."; dir = filepath.Dir(dir) {
-		if abs, ok := files[dir]; ok {
-			return os.Open(filepath.Clean(abs))
-		}
-	}
-	return nil, &fs.PathError{
-		Op:   "open",
-		Path: path,
-		Err:  fs.ErrNotExist,
-	}
-}
-
-// The name of the directory or file is its cleaned path, if absolute. If the
-// path given is relative, then remove all ".." and "." at the start. If the
-// path given is only 1 or more ".." or ".", then use the name of the absolute
-// path.
-func pathToName(path, abs string) string {
-	cleaned := filepath.Clean(path)
-	if rooted := path[:1] == "/"; rooted {
-		return cleaned
-	}
-	pathparts := strings.Split(cleaned, string(filepath.Separator))
-	for len(pathparts) > 0 && (pathparts[0] == ".." || pathparts[0] == ".") {
-		pathparts = pathparts[1:]
-	}
-	if len(pathparts) == 0 && abs != "" {
-		pathparts = []string{filepath.Base(abs)}
-	}
-	return filepath.Join(pathparts...)
+	return file, nil
 }
 
 func validateOnboardFlags() error {
@@ -549,16 +516,6 @@ func validateOnboardFlags() error {
 
 	if maxServiceInfoSize < 0 || maxServiceInfoSize > math.MaxUint16 {
 		return fmt.Errorf("max-serviceinfo-size must be between 0 and %d", math.MaxUint16)
-	}
-
-	for path := range uploads {
-		if !isValidPath(path) {
-			return fmt.Errorf("invalid upload path: %s", path)
-		}
-
-		if !fileExists(path) {
-			return fmt.Errorf("file doesn't exist: %s", path)
-		}
 	}
 
 	if wgetDir != "" && (!isValidPath(wgetDir) || !fileExists(wgetDir)) {
