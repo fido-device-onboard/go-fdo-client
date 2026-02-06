@@ -147,11 +147,12 @@ start_fdo_services() {
 #==============================================================================
 
 configure_rv_info() {
-    local rv_json=$1
+    local manufacturer_url=$1
+    local rv_json=$2
     local method="POST"
 
     # Check if rvinfo already exists
-    if curl --fail --silent --show-error "http://127.0.0.1:8038/api/v1/rvinfo" 2>/dev/null | grep -qv "No rvInfo found"; then
+    if curl --fail --silent --show-error "${manufacturer_url}/api/v1/rvinfo" 2>/dev/null | grep -qv "No rvInfo found"; then
         method="PUT"  # Update existing
     fi
 
@@ -159,7 +160,7 @@ configure_rv_info() {
          --header 'Content-Type: text/plain' \
          --request "${method}" \
          --data-raw "${rv_json}" \
-         "http://127.0.0.1:8038/api/v1/rvinfo" || {
+         "${manufacturer_url}/api/v1/rvinfo" || {
         log_error "Failed to configure RV info"
         return 1
     }
@@ -169,11 +170,12 @@ configure_rv_info() {
 }
 
 configure_owner_redirect() {
-    local redirect_json=$1
+    local owner_url=$1
+    local redirect_json=$2
     local method="POST"
 
     # Check if owner redirect already exists
-    if curl --fail --silent --show-error "http://127.0.0.1:8043/api/v1/owner/redirect" 2>/dev/null | grep -qv "No owner redirect found\|Not Found"; then
+    if curl --fail --silent --show-error "${owner_url}/api/v1/owner/redirect" 2>/dev/null | grep -qv "No owner redirect found\|Not Found"; then
         method="PUT"  # Update existing
     fi
 
@@ -181,7 +183,7 @@ configure_owner_redirect() {
          --header 'Content-Type: text/plain' \
          --request "${method}" \
          --data-raw "${redirect_json}" \
-         "http://127.0.0.1:8043/api/v1/owner/redirect" || {
+         "${owner_url}/api/v1/owner/redirect" || {
         log_error "Failed to configure owner redirect"
         return 1
     }
@@ -342,5 +344,24 @@ cleanup_test_files() {
 
     rm -f "${cred_file}" "${voucher_file}"
     log_debug "Cleaned up test files"
+}
+
+wait_for_ssh() {
+  local ip_address=$1
+  local max_attempts=30
+  local attempt=0
+
+  log_info "Waiting for SSH on ${ip_address}..."
+  while [[ ${attempt} -lt ${max_attempts} ]]; do
+    if ssh "${ssh_options[@]}" -i "${ssh_key}" "admin@${ip_address}" 'echo -n "READY"' 2>/dev/null | grep -q "READY"; then
+      log_success "SSH is ready"
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 10
+  done
+
+  log_error "SSH connection timed out after $((max_attempts * 10)) seconds"
+  return 1
 }
 
