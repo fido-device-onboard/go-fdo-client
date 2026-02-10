@@ -397,6 +397,7 @@ func initializeFSIMs(dlDir, wgetDir, defaultWorkingDir string, enableInteropTest
 	// the local device
 	dlFSIM := &fsim.Download{
 		ErrorLog: &slogErrorWriter{},
+		Rename:   moveFile,
 	}
 	if dlDir != "" {
 		dlFSIM.CreateTemp = func() (*os.File, error) {
@@ -424,7 +425,9 @@ func initializeFSIMs(dlDir, wgetDir, defaultWorkingDir string, enableInteropTest
 
 	// fdo.wget: use --wget-dir to force downloaded files into a specific local directory,
 	// otherwise allow the owner server to control where the file is stored on the device
-	wgetFSIM := &fsim.Wget{}
+	wgetFSIM := &fsim.Wget{
+		Rename: moveFile,
+	}
 	if wgetDir != "" {
 		wgetFSIM.CreateTemp = func() (*os.File, error) {
 			tmpFile, err := os.CreateTemp(wgetDir, ".fdo.wget_*")
