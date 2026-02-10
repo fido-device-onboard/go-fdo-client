@@ -3,8 +3,8 @@ module github.com/fido-device-onboard/go-fdo-client
 go 1.25.5
 
 require (
-	github.com/fido-device-onboard/go-fdo v0.0.0-20260116133239-94bd9c5d647c
-	github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20260116133239-94bd9c5d647c
+	github.com/fido-device-onboard/go-fdo v0.0.0-20260204145003-2d3d7c734680
+	github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20260204145003-2d3d7c734680
 	github.com/fido-device-onboard/go-fdo/tpm v0.0.0-20260116133239-94bd9c5d647c
 	github.com/google/go-tpm v0.9.8
 	github.com/spf13/cobra v1.9.1

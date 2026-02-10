@@ -5,10 +5,10 @@ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/fatih/color v1.9.0/go.mod h1:eQcE1qtQxscV5RaZvpXrrb8Drkc3/DdQ+uUYCNjL+zU=
 github.com/fatih/color v1.16.0 h1:zmkK9Ngbjj+K0yRhTVONQh1p/HknKYSlNT+vZCzyokM=
 github.com/fatih/color v1.16.0/go.mod h1:fL2Sau1YI5c0pdGEVCbKQbLXB6edEj1ZgiY4NijnWvE=
-github.com/fido-device-onboard/go-fdo v0.0.0-20260116133239-94bd9c5d647c h1:LoAwPvmXuTjVdB8ZZTG50stQa+IagPGsrGNaojFJUvI=
-github.com/fido-device-onboard/go-fdo v0.0.0-20260116133239-94bd9c5d647c/go.mod h1:01JaWYOQtO5PP2MjiddBMzfAXmx9WPILx+IHwWXszAA=
-github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20260116133239-94bd9c5d647c h1:5qUA3ILcJAz5rUiK6h7nghgC/8hZKqicxis9sSfVZtc=
-github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20260116133239-94bd9c5d647c/go.mod h1:VYB2/kKt/ANRcwB9xvvLAeF508FEAxmy+aOWea42paY=
+github.com/fido-device-onboard/go-fdo v0.0.0-20260204145003-2d3d7c734680 h1:My2EAhqoc71sdxZjHI5C4VkJIfcLf8VFIdH658eiLhM=
+github.com/fido-device-onboard/go-fdo v0.0.0-20260204145003-2d3d7c734680/go.mod h1:01JaWYOQtO5PP2MjiddBMzfAXmx9WPILx+IHwWXszAA=
+github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20260204145003-2d3d7c734680 h1:yPX3n9FYojCoGVmbcBBT6C+KVrUYRh5ImfBGpai0Xmw=
+github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20260204145003-2d3d7c734680/go.mod h1:VYB2/kKt/ANRcwB9xvvLAeF508FEAxmy+aOWea42paY=
 github.com/fido-device-onboard/go-fdo/tpm v0.0.0-20260116133239-94bd9c5d647c h1:S7wmTYhnG3NjL7IsRbMoiqRT106wst68q/ad8wC/L2s=
 github.com/fido-device-onboard/go-fdo/tpm v0.0.0-20260116133239-94bd9c5d647c/go.mod h1:BoRdzOHelkhAL65P1VQjdrhR32tGdyqk2pbb4jcdnqM=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=

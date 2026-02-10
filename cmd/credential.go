@@ -198,9 +198,9 @@ func saveCred(dc any) error {
 		return fmt.Errorf("error closing temp file: %w", err)
 	}
 
-	// Rename temp file to given blob path
-	if err := os.Rename(tmp.Name(), rootConfig.Blob); err != nil {
-		return fmt.Errorf("error renaming temp blob credential to %q: %w", rootConfig.Blob, err)
+	// Move temp file to given blob path (supports cross-filesystem moves)
+	if err := moveFile(tmp.Name(), rootConfig.Blob); err != nil {
+		return fmt.Errorf("error moving temp blob credential to %q: %w", rootConfig.Blob, err)
 	}
 
 	return nil
