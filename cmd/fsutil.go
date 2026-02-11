@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"syscall"
 )
 
 // moveFile moves a file from src to dst, using efficient os.Rename when
@@ -21,21 +20,39 @@ import (
 // only falls back to copy+remove if the error indicates a cross-filesystem
 // move (EXDEV). This avoids the overhead of checking filesystems upfront
 // (which would require 3 syscalls: stat src, stat dst, then rename/copy).
-
+//
+// Cross-platform support:
+//   - Unix/Linux: Handles EXDEV error for cross-filesystem moves
+//   - Windows: Handles ERROR_NOT_SAME_DEVICE (error 17) for cross-drive moves (C:\ to D:\)
+//   - Other errors (permission denied, disk full, etc.) are returned as-is
 func moveFile(src, dst string) error {
-	err := os.Rename(src, dst)
+	// Security check: refuse to overwrite symlinks
+	dstInfo, err := os.Lstat(dst)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error checking destination: %w", err)
+	}
+	if err == nil && dstInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("destination %q is a symlink", dst)
+	}
+
+	err = os.Rename(src, dst)
 	if err == nil {
 		slog.Debug("file moved using os.Rename", "src", src, "dst", dst)
 		return nil
 	}
 
+	// Check if it's a cross-filesystem/cross-drive move
 	var linkErr *os.LinkError
-	if errors.As(err, &linkErr) && errors.Is(linkErr.Err, syscall.EXDEV) {
-		slog.Debug("cross-filesystem move detected, using copy+remove fallback", "src", src, "dst", dst)
+	if errors.As(err, &linkErr) && isCrossDeviceError(linkErr.Err) {
+		slog.Debug("cross-filesystem/cross-drive move detected, using copy+remove fallback", "src", src, "dst", dst)
 		return copyAndRemove(src, dst)
 	}
 
-	return err
+	// For all other errors, log and return with context
+	// Common errors: permission denied, source not found, no space left,
+	// destination is a directory, read-only filesystem, etc.
+	slog.Debug("os.Rename failed", "src", src, "dst", dst, "error", err)
+	return fmt.Errorf("failed to rename %q to %q: %w", src, dst, err)
 }
 
 // copyAndRemove copies src to dst and removes src on success.
