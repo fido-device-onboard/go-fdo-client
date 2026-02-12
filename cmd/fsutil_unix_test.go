@@ -7,7 +7,6 @@ package cmd
 
 import (
 	"bytes"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -48,17 +47,21 @@ func TestMoveFileCrossFilesystem(t *testing.T) {
 
 	t.Logf("Testing cross-filesystem move: %s (dev=%d) -> %s (dev=%d)", tmpDir, tmpStat.Dev, cwd, cwdStat.Dev)
 
-	// Create source file in /tmp
-	srcPath := filepath.Join(tmpDir, fmt.Sprintf("go-fdo-test-src-%d.txt", os.Getpid()))
+	// Create source file in /tmp using t.TempDir() for automatic cleanup
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "source.txt")
 	content := []byte("test content for cross-filesystem move")
 	if err := os.WriteFile(srcPath, content, 0640); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
-	defer os.Remove(srcPath) // Cleanup in case test fails
 
-	// Create destination in current directory
-	dstPath := filepath.Join(cwd, fmt.Sprintf("go-fdo-test-dst-%d.txt", os.Getpid()))
-	defer os.Remove(dstPath) // Cleanup
+	// Create destination directory in cwd using t.Cleanup() for automatic cleanup
+	dstDir, err := os.MkdirTemp(cwd, ".go-fdo-test-")
+	if err != nil {
+		t.Fatalf("Failed to create destination directory: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dstDir) })
+	dstPath := filepath.Join(dstDir, "destination.txt")
 
 	// Move the file
 	if err := moveFile(srcPath, dstPath); err != nil {

@@ -4,11 +4,11 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 )
 
 // moveFile moves a file from src to dst, using efficient os.Rename when
@@ -21,10 +21,9 @@ import (
 // move (EXDEV). This avoids the overhead of checking filesystems upfront
 // (which would require 3 syscalls: stat src, stat dst, then rename/copy).
 //
-// Cross-platform support:
-//   - Unix/Linux: Handles EXDEV error for cross-filesystem moves
-//   - Windows: Handles ERROR_NOT_SAME_DEVICE (error 17) for cross-drive moves (C:\ to D:\)
-//   - Other errors (permission denied, disk full, etc.) are returned as-is
+// Handles EXDEV error for cross-filesystem moves on Unix/Linux.
+// Other errors (permission denied, source not found, no space left, etc.)
+// are returned as-is.
 func moveFile(src, dst string) error {
 	// Security check: refuse to overwrite symlinks
 	dstInfo, err := os.Lstat(dst)
@@ -42,8 +41,7 @@ func moveFile(src, dst string) error {
 	}
 
 	// Check if it's a cross-filesystem/cross-drive move
-	var linkErr *os.LinkError
-	if errors.As(err, &linkErr) && isCrossDeviceError(linkErr.Err) {
+	if isCrossDeviceError(err) {
 		slog.Debug("cross-filesystem/cross-drive move detected, using copy+remove fallback", "src", src, "dst", dst)
 		return copyAndRemove(src, dst)
 	}
@@ -56,6 +54,15 @@ func moveFile(src, dst string) error {
 }
 
 // copyAndRemove copies src to dst and removes src on success.
+//
+// This function uses the atomic rename pattern to ensure safe file replacement:
+//  1. Create a temporary file in the destination directory
+//  2. Copy data and set permissions on the temporary file
+//  3. Atomically rename temp file to final destination (os.Rename is atomic on same filesystem)
+//  4. Remove source file only after destination is complete
+//
+// This ensures the destination file is either complete or doesn't exist (no partial files),
+// and prevents corruption if the process is interrupted during the copy operation.
 func copyAndRemove(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -68,29 +75,41 @@ func copyAndRemove(src, dst string) error {
 		return fmt.Errorf("error getting source file info: %w", err)
 	}
 
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode())
+	// Create temp file in destination directory (ensures same filesystem for atomic rename)
+	tmpDst, err := os.CreateTemp(filepath.Dir(dst), ".fdo.move_*")
 	if err != nil {
-		return fmt.Errorf("error creating destination file: %w", err)
+		return fmt.Errorf("error creating temporary destination file: %w", err)
 	}
+	tmpName := tmpDst.Name()
 
 	successful := false
 	defer func() {
 		if !successful {
-			_ = dstFile.Close()
-			_ = os.Remove(dst)
+			_ = tmpDst.Close()
+			_ = os.Remove(tmpName)
 		}
 	}()
 
-	if _, err = io.Copy(dstFile, srcFile); err != nil {
+	// Set permissions before writing sensitive data
+	if err := tmpDst.Chmod(srcInfo.Mode()); err != nil {
+		return fmt.Errorf("error setting permissions to %o: %w", srcInfo.Mode().Perm(), err)
+	}
+
+	if _, err = io.Copy(tmpDst, srcFile); err != nil {
 		return fmt.Errorf("error copying file: %w", err)
 	}
 
-	if err = dstFile.Sync(); err != nil {
+	if err = tmpDst.Sync(); err != nil {
 		return fmt.Errorf("error syncing destination file: %w", err)
 	}
 
-	if err = dstFile.Close(); err != nil {
+	if err = tmpDst.Close(); err != nil {
 		return fmt.Errorf("error closing destination file: %w", err)
+	}
+
+	// Atomically rename temp file to final destination
+	if err = os.Rename(tmpName, dst); err != nil {
+		return fmt.Errorf("error replacing destination file: %w", err)
 	}
 
 	successful = true
