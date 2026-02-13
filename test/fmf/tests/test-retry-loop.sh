@@ -99,6 +99,11 @@ test_bypass_to1_coexistence() {
         {"dns":"owner","port":"8043","protocol":"http","ip":"127.0.0.1"}
     ]' || return 1
 
+    log_info "Adding certificate to rendezvous..."
+    crt="/etc/pki/go-fdo-server/device-ca-example.crt"
+    add_device_ca_cert http://127.0.0.1:8041 "${crt}"
+    log_info "Certificate added to rendezvous"
+
     device_init "bypass-coexistence-test" "${CRED_FILE}" || return 1
     transfer_voucher "${CRED_FILE}" "${VOUCHER_FILE}" || return 1
 
@@ -141,6 +146,11 @@ test_rvdelaysec_vs_default() {
         {"dev_only": true, "ip": "192.0.2.1", "device_port": "8041", "protocol": "http", "delay_seconds": 5},
         {"dev_only": true, "ip": "192.0.2.2", "device_port": "8041", "protocol": "http"}
     ]' || return 1
+
+    log_info "Adding certificate to rendezvous..."
+    crt="/etc/pki/go-fdo-server/device-ca-example.crt"
+    add_device_ca_cert http://127.0.0.1:8041 "${crt}"
+    log_info "Certificate added to rendezvous"
 
     device_init "delay-test" "${CRED_FILE}" || return 1
 
@@ -220,6 +230,11 @@ test_to2_retry_delay_configured() {
         {"ip": "192.0.2.2", "port": "8043", "protocol": "http"},
         {"dns": "owner", "port": "8043", "protocol": "http", "ip": "127.0.0.1"}
     ]' || return 1
+
+    log_info "Adding certificate to rendezvous..."
+    crt="/etc/pki/go-fdo-server/device-ca-example.crt"
+    add_device_ca_cert http://127.0.0.1:8041 "${crt}"
+    log_info "Certificate added to rendezvous"
 
     device_init "to2-delay-test" "${CRED_FILE}" || return 1
     transfer_voucher "${CRED_FILE}" "${VOUCHER_FILE}" || return 1
