@@ -113,12 +113,6 @@ start_fdo_services() {
         return 0
     fi
 
-    # Fix certificate permissions
-    chown go-fdo-server-manufacturer:go-fdo-server /etc/go-fdo-server/{manufacturer,device-ca}*.{crt,key} 2>/dev/null || true
-    chmod g+r /etc/go-fdo-server/device-ca.crt 2>/dev/null || true
-    chown go-fdo-server-owner:go-fdo-server /etc/go-fdo-server/owner*.{crt,key} 2>/dev/null || true
-    chmod g+r /etc/go-fdo-server/owner.crt 2>/dev/null || true
-
     for service in manufacturer rendezvous owner; do
         systemctl start go-fdo-server-${service}.service || {
             log_error "Failed to start ${service} server"
@@ -188,6 +182,20 @@ configure_owner_redirect() {
 
     log_debug "Owner redirect configured"
     return 0
+}
+
+#==============================================================================
+# CERTIFICATE OPERATIONS
+#==============================================================================
+
+add_device_ca_cert() {
+    local url="$1"
+    local crt="$2"
+    curl --fail --verbose --silent --insecure \
+        --request POST \
+        --header 'Content-Type: application/x-pem-file' \
+        --data-binary @"${crt}" \
+        "${url}/api/v1/device-ca"
 }
 
 #==============================================================================

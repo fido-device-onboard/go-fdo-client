@@ -151,6 +151,16 @@ send_ov_to_owner () {
   curl --fail --verbose --silent "http://${owner_service}/api/v1/owner/vouchers" --data-binary "@${output}"
 }
 
+add_device_ca_cert() {
+    local url="$1"
+    local crt="$2"
+    curl --fail --verbose --silent --insecure \
+        --request POST \
+        --header 'Content-Type: application/x-pem-file' \
+        --data-binary @"${crt}" \
+        "${url}/api/v1/device-ca"
+}
+
 run_to0 () {
   local owner_service=$1
   local guid=$2
@@ -167,6 +177,7 @@ test_onboarding () {
   setup_hostnames
   wait_for_fdo_servers_ready
   set_rendezvous_info ${manufacturer_service} ${rendezvous_dns} ${rendezvous_ip} ${rendezvous_port}
+  add_device_ca_cert ${rendezvous_service} ${device_ca_crt}
   run_device_initialization
   guid=$(get_device_guid ${device_credentials})
   get_ov_from_manufacturer ${manufacturer_service} "${guid}" ${owner_ov}

@@ -6,6 +6,9 @@ set -eox pipefail
 # 127.0.0.1 usage is intentional for testing local FDO server instances.
 # devskim: ignore DS137138
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/utils.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -188,6 +191,12 @@ curl --fail --silent --show-error \
     exit 1
 }
 log_info "Owner redirect configured"
+
+# Add certificate to rendezvous
+log_info "Adding ca certificate to rendezvous..."
+crt="/etc/pki/go-fdo-server/device-ca-example.crt"
+add_device_ca_cert http://127.0.0.1:8041 "${crt}"
+log_info "Certificate added to rendezvous"
 
 # Test 1: Device Initialization (DI)
 # Using default ports: manufacturer=8038, rendezvous=8041, owner=8043
