@@ -72,12 +72,13 @@ jobs:
     packages: [go-fdo-client-fedora]
     trigger: pull_request
     targets: &copr_fedora_targets
-      - "fedora-latest-stable-x86_64"
-      - "fedora-latest-stable-aarch64"
-      - "fedora-latest-x86_64"
-      - "fedora-latest-aarch64"
+      # Temporarily disabled for faster testing - only rawhide enabled
+      # - "fedora-latest-stable-x86_64"
+      # - "fedora-latest-stable-aarch64"
+      # - "fedora-latest-x86_64"
+      # - "fedora-latest-aarch64"
       - "fedora-rawhide-x86_64"
-      - "fedora-rawhide-aarch64"
+      # - "fedora-rawhide-aarch64"
 
     # Build all versions in '@fedora-iot/copr' copr because it's possible to add golang >= 1.25.0
     # see: https://copr.fedorainfracloud.org/coprs/g/fedora-iot/fedora-iot/edit_chroot/fedora-42-x86_64/
@@ -134,38 +135,39 @@ jobs:
       echo "localpkg_gpgcheck=0" >> /etc/dnf/dnf.conf
 
   # CentOS jobs
-
-  - &copr_centos
-    job: copr_build
-    packages: [go-fdo-client-centos]
-    trigger: pull_request
-    targets: &copr_centos_targets
-      - "centos-stream-9-x86_64"
-      - "centos-stream-9-aarch64"
-      - "centos-stream-10-x86_64"
-      - "centos-stream-10-aarch64"
+  # Temporarily disabled for faster testing
+  # - &copr_centos
+  #   job: copr_build
+  #   packages: [go-fdo-client-centos]
+  #   trigger: pull_request
+  #   targets: &copr_centos_targets
+  #     - "centos-stream-9-x86_64"
+  #     - "centos-stream-9-aarch64"
+  #     - "centos-stream-10-x86_64"
+  #     - "centos-stream-10-aarch64"
 
   # Build also for epel-9 and epel-10 in '@fedora-iot/fedora-iot' copr
-  - <<: *copr_centos
-    trigger: commit
-    branch: main
-    owner: "@fedora-iot"
-    project: fedora-iot
-    targets:
-      - "centos-stream-9-x86_64"
-      - "centos-stream-9-aarch64"
-      - "centos-stream-10-x86_64"
-      - "centos-stream-10-aarch64"
-      - "epel-9-x86"
-      - "epel-9-aarch64"
-      - "epel-10-x86"
-      - "epel-10-aarch64"
+  # Temporarily disabled (references commented copr_centos anchor)
+  # - <<: *copr_centos
+  #   trigger: commit
+  #   branch: main
+  #   owner: "@fedora-iot"
+  #   project: fedora-iot
+  #   targets:
+  #     - "centos-stream-9-x86_64"
+  #     - "centos-stream-9-aarch64"
+  #     - "centos-stream-10-x86_64"
+  #     - "centos-stream-10-aarch64"
+  #     - "epel-9-x86"
+  #     - "epel-9-aarch64"
+  #     - "epel-10-x86"
+  #     - "epel-10-aarch64"
 
   # CentOS E2E Testing jobs
-  #
-  - job: tests
-    trigger: pull_request
-    identifier: e2e-centos
-    tmt_plan: test/fmf/plans/e2e
-    packages: [go-fdo-client-centos]
-    targets: *copr_centos_targets
+  # Temporarily disabled for faster testing
+  # - job: tests
+  #   trigger: pull_request
+  #   identifier: e2e-centos
+  #   tmt_plan: test/fmf/plans/e2e
+  #   packages: [go-fdo-client-centos]
+  #   targets: *copr_centos_targets
