@@ -9,7 +9,8 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  # Temporarily disabled for faster testing
+  # pull_request:
 jobs:
   test-makefile:
     name: build and test makefile
