@@ -27,3 +27,5 @@ require:
   - go-fdo-server-manufacturer
   - go-fdo-server-rendezvous
   - go-fdo-server-owner
+tag:
+  - e2e

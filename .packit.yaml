@@ -127,6 +127,15 @@ jobs:
     packages: [go-fdo-client-fedora]
     targets: *copr_fedora_targets
 
+  - job: tests
+    trigger: pull_request
+    identifier: bootc-fedora
+    tmt_plan: test/fmf/plans/bootc-onboarding
+    packages: [go-fdo-client-fedora]
+    targets: # Temporarily disabling rawhide due to bug https://bugzilla.redhat.com/show_bug.cgi?id=2427945
+      - "fedora-latest-stable-x86_64"
+      - "fedora-latest-stable-aarch64"
+
   # CentOS jobs
 
   - &copr_centos
