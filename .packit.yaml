@@ -126,6 +126,12 @@ jobs:
     tmt_plan: test/fmf/plans/e2e
     packages: [go-fdo-client-fedora]
     targets: *copr_fedora_targets
+    use_internal_tf: True
+    tf_post_install_script: |
+      #!/bin/bash
+      set -xeo pipefail
+      echo "%_pkgverify_level digest" >> /etc/rpm/macros
+      echo "localpkg_gpgcheck=0" >> /etc/dnf/dnf.conf
 
   # CentOS jobs
 
