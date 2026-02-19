@@ -25,6 +25,10 @@ prepare:
           go-fdo-server-owner \
           go-fdo-server-rendezvous
         dnf copr disable -y @fedora-iot/fedora-iot
+
+        # Generate FDO server certificates for E2E testing
+        echo "Generating FDO server certificates..."
+        sudo /usr/libexec/go-fdo-server/generate-go-fdo-server-certs.sh
 provision:
     how: virtual
     memory: 4096
