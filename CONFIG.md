@@ -60,16 +60,13 @@ The onboarding configuration is under the `onboard` section:
 |-----|------|-------------|----------|
 | `kex` | string | Key exchange suite. Options: `DHKEXid14`, `DHKEXid15`, `ASYMKEX2048`, `ASYMKEX3072`, `ECDH256`, `ECDH384` | Yes |
 | `cipher` | string | Cipher suite for encryption. Options: `A128GCM`, `A192GCM`, `A256GCM`, `AES-CCM-64-128-128`, `AES-CCM-64-128-256`, `COSEAES128CBC`, `COSEAES128CTR`, `COSEAES256CBC`, `COSEAES256CTR` | No (default: `A128GCM`) |
-| `download` | string | Directory to download files into (FSIM disabled if empty) | No |
-| `echo-commands` | boolean | Echo all commands received to stdout (FSIM disabled if false) | No (default: false) |
+| `default-working-dir` | string | Default working directory for all FSIMs. The `fdo.command` module executes commands from this directory. The `fdo.download` and `fdo.wget` modules create temporary files in this directory and resolve relative file paths using it as the base. The `fdo.upload` module resolves relative file paths from this directory. Must be an absolute path to a writable directory. | No (default: current working directory) |
 | `enable-interop-test` | boolean | Enable FIDO Alliance interop test module | No (default: false) |
 | `insecure-tls` | boolean | Skip TLS certificate verification | No (default: false) |
 | `max-serviceinfo-size` | integer | Maximum service info size to receive (0-65535) | No (default: 1300) |
 | `allow-credential-reuse` | boolean | Allow credential reuse protocol during onboarding | No (default: false) |
 | `resale` | boolean | Perform resale/re-onboarding | No (default: false) |
 | `to2-retry-delay` | duration | Delay between failed TO2 attempts (e.g., `5s`, `1m`) | No (default: 0, disabled) |
-| `upload` | list of strings | Directories and files to upload from | No |
-| `wget-dir` | string | Directory for wget file operations (FSIM disabled if empty) | No |
 
 ## Configuration File Examples
 
@@ -89,18 +86,13 @@ device-init:
 onboard:
   kex: "ECDH384"
   cipher: "A256GCM"
-  download: "/tmp/downloads"
-  echo-commands: false
+  default-working-dir: "/var/fdo/working"
   enable-interop-test: false
   insecure-tls: false
   max-serviceinfo-size: 1300
   allow-credential-reuse: false
   resale: false
   to2-retry-delay: "5s"
-  upload:
-    - "/path/to/file1"
-    - "/path/to/dir1"
-  wget-dir: "/tmp/wget"
 ```
 
 ### TOML Configuration
@@ -119,16 +111,13 @@ insecure-tls = false
 [onboard]
 kex = "ECDH384"
 cipher = "A256GCM"
-download = "/tmp/downloads"
-echo-commands = false
+default-working-dir = "/var/fdo/working"
 enable-interop-test = false
 insecure-tls = false
 max-serviceinfo-size = 1300
 allow-credential-reuse = false
 resale = false
 to2-retry-delay = "5s"
-upload = ["/path/to/file1", "/path/to/dir1"]
-wget-dir = "/tmp/wget"
 ```
 
 ## Precedence Order

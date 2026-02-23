@@ -130,8 +130,6 @@ func onboardCmdInit() {
 
 	onboardCmd.Flags().Bool("allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
 	onboardCmd.Flags().String("cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
-	onboardCmd.Flags().String("download", "", "fdo.download: override destination directory set by Owner server")
-	onboardCmd.Flags().Bool("echo-commands", false, "Echo all commands received to stdout (FSIM disabled if false)")
 	onboardCmd.Flags().Bool("enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
 	onboardCmd.Flags().String("kex", "", "Name of cipher suite to use for key exchange (see usage)")
 	onboardCmd.Flags().Bool("insecure-tls", false, "Skip TLS certificate verification")
@@ -139,7 +137,6 @@ func onboardCmdInit() {
 	onboardCmd.Flags().Bool("resale", false, "Perform resale")
 	onboardCmd.Flags().Duration("to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
 	onboardCmd.Flags().String("default-working-dir", currentDir, "Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget)")
-	onboardCmd.Flags().String("wget-dir", "", "fdo.wget: override destination directory set by Owner server")
 }
 
 func init() {
@@ -375,9 +372,9 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 
 // initializeFSIMs creates and configures all FDO Service Info Modules (FSIMs).
 // All standard FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) are enabled
-// by default using go-fdo library defaults. The CLI parameters allow customization
-// of the default behavior. Uses a common default directory for FIDO Alliance compliance.
-func initializeFSIMs(dlDir, wgetDir, defaultWorkingDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
+// by default. Temporary files are created relative to defaultWorkingDir, and
+// relative file names in download/wget are resolved using defaultWorkingDir as the base.
+func initializeFSIMs(defaultWorkingDir string, enableInteropTest bool) map[string]serviceinfo.DeviceModule {
 	fsims := map[string]serviceinfo.DeviceModule{}
 	if enableInteropTest {
 		fsims["fido_alliance"] = &fsim.Interop{}
@@ -387,30 +384,24 @@ func initializeFSIMs(dlDir, wgetDir, defaultWorkingDir string, enableInteropTest
 	// that allows the user to explicitly select which FSIMs should be
 	// enabled.
 
-	// Use service module defaults provided by the go-fdo library. Use the CLI options
-	// to customize the default behavior.
-
 	fsims["fdo.command"] = &fsim.Command{}
 
-	// fdo.download: enable error output. Use --download to force downloaded files into a specific
-	// local directory, otherwise allow the owner server to control where the file is stored on
-	// the local device
+	// fdo.download: create temporary files in defaultWorkingDir.
+	// NameToPath converts relative paths to absolute using defaultWorkingDir as the base.
+	// Absolute paths are used as-is.
 	dlFSIM := &fsim.Download{
 		ErrorLog: &slogErrorWriter{},
 		Rename:   moveFile,
-	}
-	if dlDir != "" {
-		dlFSIM.CreateTemp = func() (*os.File, error) {
-			tmpFile, err := os.CreateTemp(dlDir, ".fdo.download_*")
-			if err != nil {
-				return nil, err
-			}
-			return tmpFile, nil
-		}
-		dlFSIM.NameToPath = func(name string) string {
+		CreateTemp: func() (*os.File, error) {
+			return os.CreateTemp(defaultWorkingDir, ".fdo.download_*")
+		},
+		NameToPath: func(name string) string {
 			cleanName := filepath.Clean(name)
-			return filepath.Join(dlDir, filepath.Base(cleanName))
-		}
+			if filepath.IsAbs(cleanName) {
+				return cleanName
+			}
+			return filepath.Join(defaultWorkingDir, cleanName)
+		},
 	}
 	fsims["fdo.download"] = dlFSIM
 
@@ -423,23 +414,21 @@ func initializeFSIMs(dlDir, wgetDir, defaultWorkingDir string, enableInteropTest
 		},
 	}
 
-	// fdo.wget: use --wget-dir to force downloaded files into a specific local directory,
-	// otherwise allow the owner server to control where the file is stored on the device
+	// fdo.wget: create temporary files in defaultWorkingDir.
+	// NameToPath converts relative paths to absolute using defaultWorkingDir as the base.
+	// Absolute paths are used as-is.
 	wgetFSIM := &fsim.Wget{
 		Rename: moveFile,
-	}
-	if wgetDir != "" {
-		wgetFSIM.CreateTemp = func() (*os.File, error) {
-			tmpFile, err := os.CreateTemp(wgetDir, ".fdo.wget_*")
-			if err != nil {
-				return nil, err
-			}
-			return tmpFile, nil
-		}
-		wgetFSIM.NameToPath = func(name string) string {
+		CreateTemp: func() (*os.File, error) {
+			return os.CreateTemp(defaultWorkingDir, ".fdo.wget_*")
+		},
+		NameToPath: func(name string) string {
 			cleanName := filepath.Clean(name)
-			return filepath.Join(wgetDir, filepath.Base(cleanName))
-		}
+			if filepath.IsAbs(cleanName) {
+				return cleanName
+			}
+			return filepath.Join(defaultWorkingDir, cleanName)
+		},
 	}
 	fsims["fdo.wget"] = wgetFSIM
 
@@ -447,7 +436,29 @@ func initializeFSIMs(dlDir, wgetDir, defaultWorkingDir string, enableInteropTest
 }
 
 func transferOwnership2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
-	conf.DeviceModules = initializeFSIMs(onboardConfig.Onboard.Download, onboardConfig.Onboard.WgetDir, onboardConfig.Onboard.DefaultWorkingDir, onboardConfig.Onboard.EnableInteropTest)
+	conf.DeviceModules = initializeFSIMs(onboardConfig.Onboard.DefaultWorkingDir, onboardConfig.Onboard.EnableInteropTest)
+
+	// Change to default working directory before TO2 so that the fdo.command FSIM operates
+	// in the same working directory as the file-oriented FSIMs (fdo.download, fdo.upload, fdo.wget).
+	// Restore the original directory after TO2.
+	defaultDir := onboardConfig.Onboard.DefaultWorkingDir
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current working directory: %w", err)
+	}
+
+	if currentDir != defaultDir {
+		if err := os.Chdir(defaultDir); err != nil {
+			return nil, fmt.Errorf("failed to change to default working directory %s: %w", defaultDir, err)
+		}
+		slog.Debug("Changed working directory for TO2", "dir", defaultDir)
+		defer func() {
+			if err := os.Chdir(currentDir); err != nil {
+				slog.Error("Failed to restore working directory", "dir", currentDir, "error", err)
+			}
+		}()
+	}
+
 	return fdo.TO2(ctx, transport, to1d, conf)
 }
 
@@ -565,10 +576,6 @@ func (o *OnboardClientConfig) validate() error {
 		return fmt.Errorf("invalid cipher suite: %s", o.Onboard.Cipher)
 	}
 
-	if o.Onboard.Download != "" && (!isValidPath(o.Onboard.Download) || !fileExists(o.Onboard.Download)) {
-		return fmt.Errorf("invalid download directory: %s", o.Onboard.Download)
-	}
-
 	if !slices.Contains(validKexSuites, o.Onboard.Kex) {
 		return fmt.Errorf("invalid key exchange suite: '%s', options [%s]",
 			o.Onboard.Kex, strings.Join(validKexSuites, ", "))
@@ -576,10 +583,6 @@ func (o *OnboardClientConfig) validate() error {
 
 	if o.Onboard.MaxServiceInfoSize < 0 || o.Onboard.MaxServiceInfoSize > math.MaxUint16 {
 		return fmt.Errorf("max-serviceinfo-size must be between 0 and %d", math.MaxUint16)
-	}
-
-	if o.Onboard.WgetDir != "" && (!isValidPath(o.Onboard.WgetDir) || !fileExists(o.Onboard.WgetDir)) {
-		return fmt.Errorf("invalid wget directory: %s", o.Onboard.WgetDir)
 	}
 
 	return nil

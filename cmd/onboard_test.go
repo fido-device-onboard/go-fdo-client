@@ -15,8 +15,8 @@ import (
 // TestFSIMsEnabledByDefault verifies that all standard FSIMs are enabled
 // by default without any CLI flags
 func TestFSIMsEnabledByDefault(t *testing.T) {
-	// Initialize with empty parameters (no CLI flags)
-	fsims := initializeFSIMs("", "", "/tmp/fdo-test-default", false)
+	tempDir := t.TempDir()
+	fsims := initializeFSIMs(tempDir, false)
 
 	// Verify all expected standard modules are present
 	expectedModules := []string{"fdo.command", "fdo.download", "fdo.upload", "fdo.wget"}
@@ -35,7 +35,8 @@ func TestFSIMsEnabledByDefault(t *testing.T) {
 // TestInteropModuleNotEnabledByDefault verifies that the interop test module
 // is NOT enabled when the flag is false
 func TestInteropModuleNotEnabledByDefault(t *testing.T) {
-	fsims := initializeFSIMs("", "", "/tmp/fdo-test-default", false)
+	tempDir := t.TempDir()
+	fsims := initializeFSIMs(tempDir, false)
 
 	if _, exists := fsims["fido_alliance"]; exists {
 		t.Error("fido_alliance module should not be enabled by default (when enableInteropTest is false)")
@@ -45,7 +46,8 @@ func TestInteropModuleNotEnabledByDefault(t *testing.T) {
 // TestInteropModuleEnabledWithFlag verifies that the interop test module
 // IS enabled when the flag is true
 func TestInteropModuleEnabledWithFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", "/tmp/fdo-test-default", true)
+	tempDir := t.TempDir()
+	fsims := initializeFSIMs(tempDir, true)
 
 	if _, exists := fsims["fido_alliance"]; !exists {
 		t.Error("fido_alliance module should be enabled when enableInteropTest is true")
@@ -57,10 +59,11 @@ func TestInteropModuleEnabledWithFlag(t *testing.T) {
 	}
 }
 
-// TestDownloadModuleWithoutFlag verifies that download FSIM uses library defaults
-// when no --download flag is provided
-func TestDownloadModuleWithoutFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", "/tmp/fdo-test-default", false)
+// TestDownloadModuleCallbacks verifies that download FSIM always has
+// CreateTemp and NameToPath callbacks configured
+func TestDownloadModuleCallbacks(t *testing.T) {
+	tempDir := t.TempDir()
+	fsims := initializeFSIMs(tempDir, false)
 
 	dlFSIM, ok := fsims["fdo.download"].(*fsim.Download)
 	if !ok {
@@ -72,46 +75,24 @@ func TestDownloadModuleWithoutFlag(t *testing.T) {
 		t.Error("ErrorLog should be configured for download module")
 	}
 
-	// Verify no custom callbacks are set (library defaults should be used)
-	if dlFSIM.CreateTemp != nil {
-		t.Error("CreateTemp should be nil when --download flag is not provided (use library defaults)")
-	}
-	if dlFSIM.NameToPath != nil {
-		t.Error("NameToPath should be nil when --download flag is not provided (use library defaults)")
-	}
-}
-
-// TestDownloadModuleWithFlag verifies that download FSIM uses custom path handling
-// when --download flag is provided
-func TestDownloadModuleWithFlag(t *testing.T) {
-	// Create a temporary test directory
-	tempDir := t.TempDir()
-
-	fsims := initializeFSIMs(tempDir, "", "/tmp/fdo-test-default", false)
-
-	dlFSIM, ok := fsims["fdo.download"].(*fsim.Download)
-	if !ok {
-		t.Fatal("fdo.download module is not of type *fsim.Download")
-	}
-
-	// Verify custom callbacks are set
+	// CreateTemp and NameToPath should always be set
 	if dlFSIM.CreateTemp == nil {
-		t.Error("CreateTemp should be set when --download flag is provided")
+		t.Error("CreateTemp should always be set")
 	}
 	if dlFSIM.NameToPath == nil {
-		t.Error("NameToPath should be set when --download flag is provided")
+		t.Error("NameToPath should always be set")
 	}
 }
 
 // TestDownloadCreateTempFunction verifies that CreateTemp creates files in the
-// specified directory with the correct pattern
+// default working directory with the correct pattern
 func TestDownloadCreateTempFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", "/tmp/fdo-test-default", false)
+	fsims := initializeFSIMs(tempDir, false)
 	dlFSIM := fsims["fdo.download"].(*fsim.Download)
 
-	// Test CreateTemp creates files in the specified directory
+	// Test CreateTemp creates files in the default working directory
 	tempFile, err := dlFSIM.CreateTemp()
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
@@ -119,9 +100,9 @@ func TestDownloadCreateTempFunction(t *testing.T) {
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
-	// Verify file is in the specified directory
+	// Verify file is in the default working directory
 	if !strings.HasPrefix(tempFile.Name(), tempDir) {
-		t.Errorf("Temp file %s not created in specified directory %s", tempFile.Name(), tempDir)
+		t.Errorf("Temp file %s not created in default working directory %s", tempFile.Name(), tempDir)
 	}
 
 	// Verify file matches expected pattern .fdo.download_*
@@ -131,12 +112,12 @@ func TestDownloadCreateTempFunction(t *testing.T) {
 	}
 }
 
-// TestDownloadNameToPathFunction verifies that NameToPath forces files into
-// the specified directory and uses basename only (security feature)
+// TestDownloadNameToPathFunction verifies that NameToPath converts relative
+// paths to absolute using defaultWorkingDir, and passes absolute paths through
 func TestDownloadNameToPathFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs(tempDir, "", "/tmp/fdo-test-default", false)
+	fsims := initializeFSIMs(tempDir, false)
 	dlFSIM := fsims["fdo.download"].(*fsim.Download)
 
 	testCases := []struct {
@@ -145,29 +126,24 @@ func TestDownloadNameToPathFunction(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "absolute path with directory traversal",
+			name:     "absolute path is preserved",
 			input:    "/etc/passwd",
-			expected: filepath.Join(tempDir, "passwd"),
+			expected: "/etc/passwd",
 		},
 		{
-			name:     "relative path with parent directory traversal",
-			input:    "../../../etc/shadow",
-			expected: filepath.Join(tempDir, "shadow"),
-		},
-		{
-			name:     "path with subdirectory",
-			input:    "subdir/file.txt",
-			expected: filepath.Join(tempDir, "file.txt"),
-		},
-		{
-			name:     "simple filename",
+			name:     "simple filename becomes absolute",
 			input:    "file.txt",
 			expected: filepath.Join(tempDir, "file.txt"),
 		},
 		{
-			name:     "path with multiple levels",
+			name:     "relative path with subdirectory",
+			input:    "subdir/file.txt",
+			expected: filepath.Join(tempDir, "subdir/file.txt"),
+		},
+		{
+			name:     "absolute path with multiple levels",
 			input:    "/var/log/messages/app.log",
-			expected: filepath.Join(tempDir, "app.log"),
+			expected: "/var/log/messages/app.log",
 		},
 	}
 
@@ -181,55 +157,35 @@ func TestDownloadNameToPathFunction(t *testing.T) {
 	}
 }
 
-// TestWgetModuleWithoutFlag verifies that wget FSIM uses library defaults
-// when no --wget-dir flag is provided
-func TestWgetModuleWithoutFlag(t *testing.T) {
-	fsims := initializeFSIMs("", "", "/tmp/fdo-test-default", false)
-
-	wgetFSIM, ok := fsims["fdo.wget"].(*fsim.Wget)
-	if !ok {
-		t.Fatal("fdo.wget module is not of type *fsim.Wget")
-	}
-
-	// Verify no custom callbacks are set (library defaults should be used)
-	if wgetFSIM.CreateTemp != nil {
-		t.Error("CreateTemp should be nil when --wget-dir flag is not provided (use library defaults)")
-	}
-	if wgetFSIM.NameToPath != nil {
-		t.Error("NameToPath should be nil when --wget-dir flag is not provided (use library defaults)")
-	}
-}
-
-// TestWgetModuleWithFlag verifies that wget FSIM uses custom path handling
-// when --wget-dir flag is provided
-func TestWgetModuleWithFlag(t *testing.T) {
+// TestWgetModuleCallbacks verifies that wget FSIM always has
+// CreateTemp and NameToPath callbacks configured
+func TestWgetModuleCallbacks(t *testing.T) {
 	tempDir := t.TempDir()
-
-	fsims := initializeFSIMs("", tempDir, "/tmp/fdo-test-default", false)
+	fsims := initializeFSIMs(tempDir, false)
 
 	wgetFSIM, ok := fsims["fdo.wget"].(*fsim.Wget)
 	if !ok {
 		t.Fatal("fdo.wget module is not of type *fsim.Wget")
 	}
 
-	// Verify custom callbacks are set
+	// CreateTemp and NameToPath should always be set
 	if wgetFSIM.CreateTemp == nil {
-		t.Error("CreateTemp should be set when --wget-dir flag is provided")
+		t.Error("CreateTemp should always be set")
 	}
 	if wgetFSIM.NameToPath == nil {
-		t.Error("NameToPath should be set when --wget-dir flag is provided")
+		t.Error("NameToPath should always be set")
 	}
 }
 
-// TestWgetCreateTempFunction verifies that CreateTemp creates files with
-// the correct pattern for wget module
+// TestWgetCreateTempFunction verifies that CreateTemp creates files in the
+// default working directory with the correct pattern
 func TestWgetCreateTempFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, "/tmp/fdo-test-default", false)
+	fsims := initializeFSIMs(tempDir, false)
 	wgetFSIM := fsims["fdo.wget"].(*fsim.Wget)
 
-	// Test CreateTemp creates files in the specified directory
+	// Test CreateTemp creates files in the default working directory
 	tempFile, err := wgetFSIM.CreateTemp()
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
@@ -237,9 +193,9 @@ func TestWgetCreateTempFunction(t *testing.T) {
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
-	// Verify file is in the specified directory
+	// Verify file is in the default working directory
 	if !strings.HasPrefix(tempFile.Name(), tempDir) {
-		t.Errorf("Temp file %s not created in specified directory %s", tempFile.Name(), tempDir)
+		t.Errorf("Temp file %s not created in default working directory %s", tempFile.Name(), tempDir)
 	}
 
 	// Verify file matches expected pattern .fdo.wget_*
@@ -249,12 +205,12 @@ func TestWgetCreateTempFunction(t *testing.T) {
 	}
 }
 
-// TestWgetNameToPathFunction verifies that wget NameToPath has the same
-// security behavior as download (basename only)
+// TestWgetNameToPathFunction verifies that wget NameToPath converts relative
+// paths to absolute using defaultWorkingDir, and passes absolute paths through
 func TestWgetNameToPathFunction(t *testing.T) {
 	tempDir := t.TempDir()
 
-	fsims := initializeFSIMs("", tempDir, "/tmp/fdo-test-default", false)
+	fsims := initializeFSIMs(tempDir, false)
 	wgetFSIM := fsims["fdo.wget"].(*fsim.Wget)
 
 	testCases := []struct {
@@ -263,19 +219,19 @@ func TestWgetNameToPathFunction(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "absolute path",
-			input:    "/usr/bin/malicious",
-			expected: filepath.Join(tempDir, "malicious"),
+			name:     "absolute path is preserved",
+			input:    "/usr/bin/somefile",
+			expected: "/usr/bin/somefile",
 		},
 		{
-			name:     "directory traversal attempt",
-			input:    "../../etc/passwd",
-			expected: filepath.Join(tempDir, "passwd"),
+			name:     "relative path becomes absolute",
+			input:    "downloads/photo.jpg",
+			expected: filepath.Join(tempDir, "downloads/photo.jpg"),
 		},
 		{
-			name:     "nested path",
-			input:    "downloads/images/photo.jpg",
-			expected: filepath.Join(tempDir, "photo.jpg"),
+			name:     "simple filename becomes absolute",
+			input:    "file.txt",
+			expected: filepath.Join(tempDir, "file.txt"),
 		},
 	}
 
@@ -298,7 +254,7 @@ func TestUploadModuleUsesDefaultDir(t *testing.T) {
 		t.Fatalf("Failed to get current working directory: %v", err)
 	}
 
-	fsims := initializeFSIMs("", "", defaultWorkingDir, false)
+	fsims := initializeFSIMs(defaultWorkingDir, false)
 
 	uploadFSIM, ok := fsims["fdo.upload"].(*fsim.Upload)
 	if !ok {
@@ -389,22 +345,16 @@ func TestWorkingDirFS(t *testing.T) {
 func TestCommandModuleAlwaysEnabled(t *testing.T) {
 	testCases := []struct {
 		name              string
-		dlDir             string
-		wgetDir           string
 		defaultWorkingDir string
 		enableInteropTest bool
 	}{
 		{
 			name:              "no flags",
-			dlDir:             "",
-			wgetDir:           "",
 			defaultWorkingDir: "/tmp/fdo-test-default",
 			enableInteropTest: false,
 		},
 		{
-			name:              "all flags set",
-			dlDir:             "/tmp/dl",
-			wgetDir:           "/tmp/wget",
+			name:              "interop enabled",
 			defaultWorkingDir: "/tmp/default",
 			enableInteropTest: true,
 		},
@@ -412,7 +362,7 @@ func TestCommandModuleAlwaysEnabled(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fsims := initializeFSIMs(tc.dlDir, tc.wgetDir, tc.defaultWorkingDir, tc.enableInteropTest)
+			fsims := initializeFSIMs(tc.defaultWorkingDir, tc.enableInteropTest)
 
 			if _, exists := fsims["fdo.command"]; !exists {
 				t.Error("fdo.command module should always be enabled")

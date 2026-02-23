@@ -74,8 +74,7 @@ Usage:
 Flags:
       --allow-credential-reuse     Allow credential reuse protocol during onboarding
       --cipher string              Name of cipher suite to use for encryption (see usage) (default "A128GCM")
-      --default-working-dir string Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget)
-      --download string            fdo.download: override destination directory set by Owner server
+      --default-working-dir string Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) (default current working directory)
   -h, --help                       help for onboard
       --insecure-tls               Skip TLS certificate verification
       --kex string                 Name of cipher suite to use for key exchange (see usage)
@@ -84,7 +83,6 @@ Flags:
       --resale                     Perform resale
       --rv-only                    Perform TO1 then stop
       --to2-retry-delay duration   Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)
-      --wget-dir string            fdo.wget: override destination directory set by Owner server
 
 Global Flags:
       --blob string   File path of device credential blob
@@ -131,10 +129,10 @@ The `onboard` command implements an infinite retry loop that continues attemptin
 
 The `onboard` command supports the following FDO Service Modules that can be invoked by the FDO Owner server during device onboarding:
 
-- **fdo.command**: The `fdo.command` module provides the functionality that allows the FDO Owner server to execute arbitrary shell commands on the device.
-- **fdo.download**: The `fdo.download` module provides the functionality to download a binary file from the FDO Owner server to the device.
-- **fdo.upload**: The `fdo.upload` module provides the functionality to transfer a binary file from the device to the FDO Owner server. Supports both absolute and relative file paths, with relative paths resolved from the default working directory.
-- **fdo.wget**: The `fdo.wget` module provides the functionality to transfer a binary file from an HTTP server to the device via a network.
+- **fdo.command**: The `fdo.command` module provides the functionality that allows the FDO Owner server to execute arbitrary shell commands on the device. Commands are executed from the default working directory.
+- **fdo.download**: The `fdo.download` module provides the functionality to download a binary file from the FDO Owner server to the device. Temporary files are created in the default working directory. Relative file paths from the Owner server are resolved using the default working directory as the base; absolute paths are used as-is.
+- **fdo.upload**: The `fdo.upload` module provides the functionality to transfer a binary file from the device to the FDO Owner server. Relative file paths are resolved from the default working directory; absolute paths are used as-is.
+- **fdo.wget**: The `fdo.wget` module provides the functionality to transfer a binary file from an HTTP server to the device via a network. Temporary files are created in the default working directory. Relative file paths from the Owner server are resolved using the default working directory as the base; absolute paths are used as-is.
 
 Please refer to the FSIM module definition [documentation](https://github.com/fido-alliance/fdo-sim) for further details. By default all Service Modules are available for use by the FDO Owner server during onboarding. Refer to the `onboard` command help text for additional service module configuration options. Refer to the FDO Owner server [documentation](https://github.com/fido-device-onboard/go-fdo-server) for server-side service module configuration details.
 
