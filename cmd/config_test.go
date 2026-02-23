@@ -415,7 +415,6 @@ key = "ec384"
 [onboard]
 kex = "ECDH384"
 cipher = "A256GCM"
-echo-commands = true
 insecure-tls = true
 max-serviceinfo-size = 2000
 allow-credential-reuse = true
@@ -427,7 +426,6 @@ key: ec384
 onboard:
   kex: ECDH384
   cipher: A256GCM
-  echo-commands: true
   insecure-tls: true
   max-serviceinfo-size: 2000
   allow-credential-reuse: true
@@ -441,9 +439,6 @@ onboard:
 	}
 	if got, want := o.Cipher, "A256GCM"; got != want {
 		t.Errorf("Cipher = %q, want %q", got, want)
-	}
-	if got, want := o.EchoCommands, true; got != want {
-		t.Errorf("EchoCommands = %v, want %v", got, want)
 	}
 	if got, want := o.MaxServiceInfoSize, 2000; got != want {
 		t.Errorf("MaxServiceInfoSize = %d, want %d", got, want)
@@ -561,7 +556,7 @@ onboard:
 
 	runTestBothFormats(t, "", onboardCmd, toml, yaml, false,
 		"--blob", "cli.bin", "--key", "ec384", "--kex", "ECDH384", "--cipher", "A256GCM",
-		"--max-serviceinfo-size", "2000", "--echo-commands", "--resale")
+		"--max-serviceinfo-size", "2000", "--resale")
 
 	o := capturedConfig.OnboardConfig
 	checks := []struct {
@@ -573,7 +568,6 @@ onboard:
 		{"Kex", o.Kex, "ECDH384"},
 		{"Cipher", o.Cipher, "A256GCM"},
 		{"MaxServiceInfoSize", o.MaxServiceInfoSize, 2000},
-		{"EchoCommands", o.EchoCommands, true},
 		{"Resale", o.Resale, true},
 	}
 
@@ -639,8 +633,8 @@ onboard:
 	stubRunE(t, onboardCmd)
 	path := writeConfig(t, yaml, "yaml")
 
-	// CLI provides echo-commands and max-serviceinfo-size, but NOT cipher, insecure-tls, resale
-	rootCmd.SetArgs([]string{"onboard", "--config", path, "--echo-commands", "--max-serviceinfo-size", "2000"})
+	// CLI provides max-serviceinfo-size, but NOT cipher, insecure-tls, resale
+	rootCmd.SetArgs([]string{"onboard", "--config", path, "--max-serviceinfo-size", "2000"})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -649,9 +643,6 @@ onboard:
 	o := capturedConfig.OnboardConfig
 
 	// Verify CLI values
-	if got, want := o.EchoCommands, true; got != want {
-		t.Errorf("EchoCommands = %v, want %v (from CLI)", got, want)
-	}
 	if got, want := o.MaxServiceInfoSize, 2000; got != want {
 		t.Errorf("MaxServiceInfoSize = %d, want %d (from CLI)", got, want)
 	}
@@ -750,9 +741,6 @@ onboard:
 	if got, want := o.InsecureTLS, false; got != want {
 		t.Errorf("InsecureTLS = %v, want %v", got, want)
 	}
-	if got, want := o.EchoCommands, false; got != want {
-		t.Errorf("EchoCommands = %v, want %v", got, want)
-	}
 	if got, want := o.Resale, false; got != want {
 		t.Errorf("Resale = %v, want %v", got, want)
 	}
@@ -808,12 +796,9 @@ func TestOnboard_DirectoryValidation(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		{"valid download", "download", validDir, false},
-		{"invalid download", "download", "/nonexistent", true},
-		{"valid wget-dir", "wget-dir", validDir, false},
-		{"invalid wget-dir", "wget-dir", "/nonexistent", true},
 		{"valid default-working-dir", "default-working-dir", validDir, false},
 		{"invalid default-working-dir", "default-working-dir", "/nonexistent", true},
+		{"relative default-working-dir", "default-working-dir", "its/relative", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
