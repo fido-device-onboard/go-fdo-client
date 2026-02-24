@@ -286,6 +286,10 @@ run_test() {
     set_hostname owner 127.0.0.1
 
     verify_fdo_packages || exit 1
+
+    # Generate go-fdo-server certs
+    source "/usr/libexec/go-fdo-server/generate-go-fdo-server-certs.sh"
+
     start_fdo_services || exit 1
 
     # Run all test scenarios (continue even if one fails to see all results)
