@@ -8,8 +8,6 @@ SPEC_FILE                 := $(SOURCEDIR)/$(SPEC_FILE_NAME)
 COMMIT_SHORT              := $(shell git rev-parse --short HEAD)
 VERSION                   := $(shell grep 'Version:' $(SPEC_FILE) | awk '{printf "%s", $$2}').git$(COMMIT_SHORT)
 GOFLAGS                   ?=
-COVERDIR                  ?= $(CURDIR)/test/coverage
-GOCOVERDIR                ?= $(COVERDIR)/integration
 
 GO_VENDOR_TOOLS_FILE_NAME := go-vendor-tools.toml
 GO_VENDOR_TOOLS_FILE      := $(SOURCEDIR)/$(GO_VENDOR_TOOLS_FILE_NAME)
@@ -42,23 +40,8 @@ test:
 	go test -v ./...
 
 .PHONY: test-coverage
-test-coverage: SHELL := /usr/bin/env bash
 test-coverage:
-	rm -rf "$(COVERDIR)"
-	mkdir -p "$(GOCOVERDIR)"
-	go test -coverpkg=./... -coverprofile="$(COVERDIR)/unit.out" -covermode=atomic ./...
-	export GOCOVERDIR="$(GOCOVERDIR)"; \
-	set -e; \
-	$(MAKE) build GOFLAGS="-cover -covermode=atomic" && sudo install -D -m 755 $(PROJECT) /usr/bin/; \
-	source .github/scripts/fdo-utils.sh; \
-	generate_certs; \
-	docker compose -f .github/compose/servers.yaml up -d --build; \
-	trap 'docker compose -f .github/compose/servers.yaml logs; docker compose -f .github/compose/servers.yaml down' EXIT; \
-	test_onboarding; \
-	go tool covdata textfmt -i="$(GOCOVERDIR)" -o="$(COVERDIR)/integration.out"
-	go install github.com/wadey/gocovmerge@latest
-	gocovmerge "$(COVERDIR)/unit.out" "$(COVERDIR)/integration.out" > "$(COVERDIR)/coverage.out"
-	go tool cover -html="$(COVERDIR)/coverage.out" -o "$(COVERDIR)/coverage.html"
+	.github/scripts/test-coverage.sh
 
 .PHONY: vendor-tarball
 vendor-tarball: $(VENDOR_TARBALL)
