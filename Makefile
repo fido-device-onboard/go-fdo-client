@@ -7,6 +7,7 @@ SPEC_FILE_NAME            := $(PROJECT).spec
 SPEC_FILE                 := $(SOURCEDIR)/$(SPEC_FILE_NAME)
 COMMIT_SHORT              := $(shell git rev-parse --short HEAD)
 VERSION                   := $(shell grep 'Version:' $(SPEC_FILE) | awk '{printf "%s", $$2}').git$(COMMIT_SHORT)
+GOFLAGS                   ?=
 
 GO_VENDOR_TOOLS_FILE_NAME := go-vendor-tools.toml
 GO_VENDOR_TOOLS_FILE      := $(SOURCEDIR)/$(GO_VENDOR_TOOLS_FILE_NAME)
@@ -20,7 +21,7 @@ all: build test
 
 .PHONY: build
 build: tidy fmt vet
-	go build -ldflags="-X github.com/fido-device-onboard/go-fdo-client/internal/version.VERSION=$(VERSION)"
+	go build $(GOFLAGS) -ldflags="-X github.com/fido-device-onboard/go-fdo-client/internal/version.VERSION=$(VERSION)"
 
 .PHONY: tidy
 tidy:
@@ -37,6 +38,10 @@ vet:
 .PHONY: test
 test:
 	go test -v ./...
+
+.PHONY: test-coverage
+test-coverage:
+	.github/scripts/test-coverage.sh
 
 .PHONY: vendor-tarball
 vendor-tarball: $(VENDOR_TARBALL)
