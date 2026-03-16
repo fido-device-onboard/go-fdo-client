@@ -1,6 +1,7 @@
 module github.com/fido-device-onboard/go-fdo-client
 
-go 1.25.5
+// TODO: Upgrade to Go 1.25.8 or later to resolve GO-2026-4601 and GO-2026-4602.
+go 1.25.7
 
 require (
 	github.com/fido-device-onboard/go-fdo v0.0.0-20260204145003-2d3d7c734680
