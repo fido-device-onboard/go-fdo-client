@@ -56,6 +56,9 @@ func (f *FDOClientConfig) validate() error {
 	return nil
 }
 
+// Root returns the root command for use by doc generators.
+func Root() *cobra.Command { return rootCmd }
+
 // Called by main to parse the command line and execute the subcommand
 func Execute() error {
 	// Catch interrupts
