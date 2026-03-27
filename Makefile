@@ -35,6 +35,10 @@ fmt:
 vet:
 	go vet ./...
 
+.PHONY: man
+man:
+	go run ./internal/tools/docgen -format man
+
 .PHONY: test
 test:
 	go test -v ./...
