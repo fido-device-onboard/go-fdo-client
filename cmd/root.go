@@ -27,7 +27,7 @@ var rootCmd = &cobra.Command{
 		DisableDefaultCmd: true,
 	},
 	SilenceUsage: true,
-	Use:          "fdo_client",
+	Use:          "go-fdo-client",
 	Short:        "FIDO Device Onboard Client",
 	Long:         `FIDO Device Onboard Client`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

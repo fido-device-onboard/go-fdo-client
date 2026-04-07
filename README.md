@@ -170,7 +170,7 @@ Run the FDO client in RV-only mode, which stops after TO1 is performed:
 ```
 
 ## Running the FDO Client with a TPM device
->NOTE: fdo\_client may require elevated privileges to use the TPM device. Please use 'sudo' to execute the fdo\_client.
+>NOTE: go-fdo-client may require elevated privileges to use the TPM device. Please use 'sudo' to execute go-fdo-client.
 
 ### Clear TPM NV Index to Delete Existing Credential
 
