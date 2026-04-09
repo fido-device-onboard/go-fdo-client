@@ -7,3 +7,4 @@ go-fdo-client
 go-fdo-client-*.tar.*
 rpmbuild
 test/coverage
+/docgen

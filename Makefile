@@ -20,7 +20,7 @@ VENDOR_TARBALL := $(SOURCEDIR)/$(PROJECT)-$(VERSION)-vendor.tar.bz2
 all: build test
 
 .PHONY: build
-build: tidy fmt vet
+build: tidy fmt vet docs
 	go build $(GOFLAGS) -ldflags="-X github.com/fido-device-onboard/go-fdo-client/internal/version.VERSION=$(VERSION)"
 
 .PHONY: tidy
@@ -34,6 +34,17 @@ fmt:
 .PHONY: vet
 vet:
 	go vet ./...
+
+.PHONY: docs
+docs: man cli
+
+.PHONY: man
+man:
+	go run ./internal/tools/docgen -format man
+
+.PHONY: cli
+cli:
+	go run ./internal/tools/docgen -format markdown
 
 .PHONY: test
 test:

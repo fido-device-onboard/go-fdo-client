@@ -1,0 +1,57 @@
+.nh
+.TH "GO-FDO-CLIENT-PRINT" "1" "Apr 2026" "go-fdo-client" "Go FDO Client"
+
+.SH NAME
+go-fdo-client-print - Print device credentials
+
+
+.SH SYNOPSIS
+\fBgo-fdo-client print [flags]\fP
+
+
+.SH DESCRIPTION
+Print the contents of the device's credential store.
+
+.PP
+The device credentials are read from either a file (--blob) or a TPM device (--tpm)
+and printed to standard output.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for print
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--blob\fP=""
+	File path of device credential blob
+
+.PP
+\fB--config\fP=""
+	Path to configuration file (YAML or TOML)
+
+.PP
+\fB--debug\fP[=false]
+	Print HTTP contents
+
+.PP
+\fB--key\fP=""
+	Key type for device credential [options: ec256, ec384, rsa2048, rsa3072]
+
+.PP
+\fB--tpm\fP=""
+	Use a TPM at path for device credential secrets
+
+
+.SH EXAMPLE
+.EX
+  # Print credentials from a blob file:
+  go-fdo-client print --blob cred.bin
+
+  # Print credentials from a TPM:
+  go-fdo-client print --tpm /dev/tpmrm0
+.EE
+
+
+.SH SEE ALSO
+\fBgo-fdo-client(1)\fP
