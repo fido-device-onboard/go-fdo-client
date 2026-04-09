@@ -27,9 +27,18 @@ var rootCmd = &cobra.Command{
 		DisableDefaultCmd: true,
 	},
 	SilenceUsage: true,
-	Use:          "go-fdo-client",
-	Short:        "FIDO Device Onboard Client",
-	Long:         `FIDO Device Onboard Client`,
+	Use:          "go-fdo-client {device-init|onboard|print}",
+	Short:        "FIDO Device Onboard (FDO) client",
+	Long: `Run an FDO client to initialize or onboard a device.
+
+Use one of the subcommands to perform device initialization (DI) with a
+manufacturer server, onboard a device via TO1/TO2, or print the stored
+device credentials.`,
+	Example: `  # Initialize a device with a manufacturer server:
+  go-fdo-client device-init http://127.0.0.1:8038 --key ec256 --blob cred.bin
+
+  # Onboard a previously initialized device:
+  go-fdo-client onboard --key ec256 --kex ECDH256 --blob cred.bin`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if configFile != "" {
 			viper.SetConfigFile(configFile)
@@ -55,6 +64,9 @@ func (f *FDOClientConfig) validate() error {
 
 	return nil
 }
+
+// Root returns the root command for use by doc generators.
+func Root() *cobra.Command { return rootCmd }
 
 // Called by main to parse the command line and execute the subcommand
 func Execute() error {

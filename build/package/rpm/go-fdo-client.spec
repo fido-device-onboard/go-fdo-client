@@ -49,6 +49,9 @@ export GO_LDFLAGS="-X %{goipath}/internal/version.VERSION=%{version}"
 %install
 install -m 0755 -vd                     %{buildroot}%{_bindir}
 install -m 0755 -vp %{gobuilddir}/bin/* %{buildroot}%{_bindir}/
+# Man pages
+install -m 0755 -vd %{buildroot}%{_mandir}/man1
+install -m 0644 -vp docs/man/*.1 %{buildroot}%{_mandir}/man1
 
 %check
 %if %{with check}
@@ -59,6 +62,11 @@ install -m 0755 -vp %{gobuilddir}/bin/* %{buildroot}%{_bindir}/
 %license LICENSE vendor/modules.txt
 %doc README.md
 %{_bindir}/go-fdo-client
+# Man pages
+%{_mandir}/man1/go-fdo-client.1*
+%{_mandir}/man1/go-fdo-client-device-init.1*
+%{_mandir}/man1/go-fdo-client-onboard.1*
+%{_mandir}/man1/go-fdo-client-print.1*
 
 %changelog
 %autochangelog

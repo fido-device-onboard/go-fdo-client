@@ -14,7 +14,16 @@ import (
 
 var printCmd = &cobra.Command{
 	Use:   "print",
-	Short: "Print device credential blob and exit",
+	Short: "Print device credentials",
+	Long: `Print the contents of the device's credential store.
+
+The device credentials are read from either a file (--blob) or a TPM device (--tpm)
+and printed to standard output.`,
+	Example: `  # Print credentials from a blob file:
+  go-fdo-client print --blob cred.bin
+
+  # Print credentials from a TPM:
+  go-fdo-client print --tpm /dev/tpmrm0`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if rootConfig.Debug {
 			level.Set(slog.LevelDebug)
@@ -33,7 +42,7 @@ var printCmd = &cobra.Command{
 			fmt.Printf("%+v\n", tpmCred)
 		} else {
 			if !isValidPath(rootConfig.Blob) {
-				return fmt.Errorf("invalid blob path: %s", rootConfig.Blob)
+				return fmt.Errorf("invalid blob file path: %s", rootConfig.Blob)
 			}
 			var fileCred fdoDeviceCredential
 			if err := readCredFile(&fileCred); err != nil {

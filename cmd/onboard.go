@@ -119,14 +119,6 @@ At least one of --blob or --tpm is required to access device credentials.`,
 func onboardCmdInit() {
 	rootCmd.AddCommand(onboardCmd)
 
-	// Get current working directory for default values
-	currentDir, err := os.Getwd()
-	if err != nil {
-		// If we can't get working directory, leave as empty string
-		// (validation will require user to specify an absolute path)
-		currentDir = ""
-	}
-
 	onboardCmd.Flags().Bool("allow-credential-reuse", false, "Allow credential reuse protocol during onboarding")
 	onboardCmd.Flags().String("cipher", "A128GCM", "Name of cipher suite to use for encryption (see usage)")
 	onboardCmd.Flags().Bool("enable-interop-test", false, "Enable FIDO Alliance interop test module (fsim.Interop)")
@@ -135,7 +127,7 @@ func onboardCmdInit() {
 	onboardCmd.Flags().Int("max-serviceinfo-size", serviceinfo.DefaultMTU, "Maximum service info size to receive")
 	onboardCmd.Flags().Bool("resale", false, "Perform resale")
 	onboardCmd.Flags().Duration("to2-retry-delay", 0, "Delay between failed TO2 attempts when trying multiple Owner URLs from same RV directive (0=disabled)")
-	onboardCmd.Flags().String("default-working-dir", currentDir, "Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget)")
+	onboardCmd.Flags().String("default-working-dir", "", "Default working directory for all FSIMs (fdo.command, fdo.download, fdo.upload, fdo.wget) (default: current working directory)")
 }
 
 func init() {
@@ -544,6 +536,14 @@ func (ufs *WorkingDirFS) Open(name string) (fs.File, error) {
 }
 
 func (o *OnboardClientConfig) validate() error {
+	// Default to current working directory if not specified
+	if o.Onboard.DefaultWorkingDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to determine current working directory: %w", err)
+		}
+		o.Onboard.DefaultWorkingDir = cwd
+	}
 	// Validate default working directory is an absolute path
 	if !filepath.IsAbs(o.Onboard.DefaultWorkingDir) {
 		return fmt.Errorf("default-working-dir must be an absolute path, got: %s", o.Onboard.DefaultWorkingDir)

@@ -354,3 +354,12 @@ To diagnose issues, enable debug logging to see HTTP request and response conten
     --kex ECDH256 \
     --debug
 ```
+
+## CLI reference
+
+The `go-fdo-client` command-line interface is built with subcommands for each phase of the FDO workflow. Each subcommand has its own set of flags and options. For complete usage details, including all available flags and examples, see the full CLI reference documentation:
+
+- [go-fdo-client](cli/go-fdo-client.md) — top-level command and global options
+- [go-fdo-client device-init](cli/go-fdo-client_device-init.md) — device initialization (DI)
+- [go-fdo-client onboard](cli/go-fdo-client_onboard.md) — TO1/TO2 onboarding
+- [go-fdo-client print](cli/go-fdo-client_print.md) — display device credentials
