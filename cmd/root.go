@@ -81,6 +81,7 @@ func Execute() error {
 }
 
 func rootCmdInit() {
+	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 	pflags := rootCmd.PersistentFlags()
 	pflags.StringVar(&configFile, "config", "", "Path to configuration file (YAML or TOML)")
 	pflags.String("blob", "", "File path of device credential blob")
