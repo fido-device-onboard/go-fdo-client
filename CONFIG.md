@@ -59,7 +59,7 @@ The onboarding configuration is under the `onboard` section:
 | Key | Type | Description | Required |
 |-----|------|-------------|----------|
 | `kex` | string | Key exchange suite. Options: `DHKEXid14`, `DHKEXid15`, `ASYMKEX2048`, `ASYMKEX3072`, `ECDH256`, `ECDH384` | Yes |
-| `cipher` | string | Cipher suite for encryption. Options: `A128GCM`, `A192GCM`, `A256GCM`, `AES-CCM-64-128-128`, `AES-CCM-64-128-256`, `COSEAES128CBC`, `COSEAES128CTR`, `COSEAES256CBC`, `COSEAES256CTR` | No (default: `A128GCM`) |
+| `cipher` | string | Cipher suite for encryption. Options: `A128GCM`, `A192GCM`, `A256GCM`, `COSEAES128CBC`, `COSEAES128CTR`, `COSEAES256CBC`, `COSEAES256CTR` | No (default: `A128GCM`) |
 | `default-working-dir` | string | Default working directory for all FSIMs. The `fdo.command` module executes commands from this directory. The `fdo.download` and `fdo.wget` modules create temporary files in this directory and resolve relative file paths using it as the base. The `fdo.upload` module resolves relative file paths from this directory. Must be an absolute path to a writable directory. | No (default: current working directory) |
 | `enable-interop-test` | boolean | Enable FIDO Alliance interop test module | No (default: false) |
 | `insecure-tls` | boolean | Skip TLS certificate verification | No (default: false) |
