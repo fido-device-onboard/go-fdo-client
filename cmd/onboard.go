@@ -45,7 +45,6 @@ var onboardConfig OnboardClientConfig
 
 var validCipherSuites = []string{
 	"A128GCM", "A192GCM", "A256GCM",
-	"AES-CCM-64-128-128", "AES-CCM-64-128-256",
 	"COSEAES128CBC", "COSEAES128CTR",
 	"COSEAES256CBC", "COSEAES256CTR",
 }
