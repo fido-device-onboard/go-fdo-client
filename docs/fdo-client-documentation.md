@@ -7,7 +7,6 @@ FDO enables zero-touch device onboarding and secure device identity management f
 - **`device-init`** — register the device with a Manufacturer server and create its device credential
 - **`onboard`** — transfer device ownership from the Manufacturer to the Owner server
 - **`print`** — display the device credential
-- **`help`** — display help for any command
 
 ## Prerequisites
 
