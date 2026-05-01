@@ -38,9 +38,14 @@ vet:
 .PHONY: docs
 docs: man cli
 
+# Strip the date from generated man pages to keep them deterministic.
+# See https://github.com/fido-device-onboard/go-fdo-client/issues/113
 .PHONY: man
 man:
-	go run ./internal/tools/docgen -format man
+	SOURCE_DATE_EPOCH=0 go run ./internal/tools/docgen -format man
+	for f in docs/man/*.1; do \
+		sed 's/\(\.TH "[^"]*" "[^"]*"\) "[^"]*"/\1/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; \
+	done
 
 .PHONY: cli
 cli:
