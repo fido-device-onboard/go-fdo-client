@@ -12,7 +12,7 @@ FDO enables zero-touch device onboarding and secure device identity management f
 ## Prerequisites
 
 - Linux system
-- FDO servers deployed and accessible (Manufacturer, Rendezvous, Owner). See the FDO server documentation for server deployment.
+- FDO servers deployed and accessible (Manufacturer, Rendezvous, Owner). See [Server Installation](https://github.com/fido-device-onboard/go-fdo-server/blob/main/docs/user-guide/README.md#server-installation) in the "FIDO Device Onboarding User Guide" for server deployment.
 - Network connectivity between the device and FDO servers
 
 ## Installing the FDO client
@@ -57,7 +57,7 @@ To verify that device initialization completed successfully, see [Verifying devi
 > - The Ownership Voucher must be transferred from the Manufacturer server to the Owner server.
 > - The Owner server must register with the Rendezvous server (via the TO0 protocol).
 >
-> These are server-side operations. For more information, see the FDO server documentation.
+> These are server-side operations. For more information, see [Basic Onboarding Flow (Device DI → voucher → TO0 → TO2)](https://github.com/fido-device-onboard/go-fdo-server/blob/main/docs/user-guide/quick-start.md#basic-onboarding-flow-device-di--voucher--to0--to2), step 3 in the "Quickstart: Install, Configure and Run FDO".
 
 ### Phase 2: Onboarding at first boot
 
@@ -240,7 +240,7 @@ During onboarding, the FDO Owner server can invoke the following service modules
 | `fdo.upload` | Upload files from the device to the Owner server. Relative paths resolve from `default-working-dir`. |
 | `fdo.wget` | Download files from an HTTP server to the device. Relative paths resolve from `default-working-dir`. Temporary files are created in `default-working-dir`. |
 
-All service modules are enabled by default. The `default-working-dir` is configured as an onboarding option (see [Onboarding options](#onboarding-options)). The Owner server configuration determines which modules are invoked during onboarding. See the FDO server documentation for server-side configuration.
+All service modules are enabled by default. The `default-working-dir` is configured as an onboarding option (see [Onboarding options](#onboarding-options)). The Owner server configuration determines which modules are invoked during onboarding. See [Service Info Configuration (FSIM Operations)](https://github.com/fido-device-onboard/go-fdo-server/blob/main/docs/user-guide/server-config.md#service-info-configuration-fsim-operations) in the "Configuration File Reference" for server-side configuration.
 
 ## Using a TPM
 
@@ -313,7 +313,7 @@ The Rendezvous server does not have a record for this device. This means the Own
 3. The Owner server is configured with the correct Rendezvous server address.
 4. The correct Ownership Voucher was transferred. The GUID in the voucher must match the GUID in the device credential. Use `go-fdo-client print --blob /boot/device_credential` (or `--tpm /dev/tpmrm0` when using a TPM) to check the device GUID.
 
-These are server-side operations. For more information, see the FDO server documentation. The `onboard` command retries automatically. If it continues to fail, check the Owner and Rendezvous server logs.
+These are server-side operations. For more information, see [Basic Onboarding Flow (Device DI → voucher → TO0 → TO2)](https://github.com/fido-device-onboard/go-fdo-server/blob/main/docs/user-guide/quick-start.md#basic-onboarding-flow-device-di--voucher--to0--to2), step 3 in the "Quickstart: Install, Configure and Run FDO". The `onboard` command retries automatically. If it continues to fail, check the Owner and Rendezvous server logs.
 
 ### Onboarding fails with "no rendezvous information found that's usable for the device"
 
